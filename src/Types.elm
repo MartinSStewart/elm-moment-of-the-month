@@ -5,9 +5,8 @@ import Browser exposing (UrlRequest)
 import Browser.Navigation
 import Duration exposing (Duration)
 import Id exposing (ClientId, CryptographicKey, HostSecret, QnaSessionId, SessionId, UserId(..))
+import Moment exposing (BackendMomentSession, HostStatus, MomentId(..), MomentSession)
 import Network exposing (ChangeId, NetworkModel)
-import QnaSession exposing (BackendQnaSession, HostStatus, QnaSession)
-import Question exposing (BackendQuestion, Question, QuestionId(..))
 import String.Nonempty exposing (NonemptyString)
 import Time
 import Url exposing (Url)
@@ -38,7 +37,7 @@ type FrontendStatus
 
 type alias InQnaSession_ =
     { qnaSessionId : CryptographicKey QnaSessionId
-    , networkModel : NetworkModel LocalQnaMsg ConfirmLocalQnaMsg ServerQnaMsg QnaSession
+    , networkModel : NetworkModel LocalQnaMsg ConfirmLocalQnaMsg ServerQnaMsg MomentSession
     , question : String
     , pressedCreateQuestion : Bool
     , localChangeCounter : ChangeId
@@ -48,7 +47,7 @@ type alias InQnaSession_ =
     }
 
 
-initInQnaSession : CryptographicKey QnaSessionId -> QnaSession -> Maybe (CryptographicKey HostSecret) -> InQnaSession_
+initInQnaSession : CryptographicKey QnaSessionId -> MomentSession -> Maybe (CryptographicKey HostSecret) -> InQnaSession_
 initInQnaSession qnaSessionId qnaSesssion hostStatus =
     { qnaSessionId = qnaSessionId
     , networkModel = Network.init qnaSesssion
@@ -62,40 +61,33 @@ initInQnaSession qnaSessionId qnaSesssion hostStatus =
 
 
 type alias BackendModel =
-    { qnaSessions : Dict (CryptographicKey QnaSessionId) BackendQnaSession
+    { qnaSessions : Dict (CryptographicKey QnaSessionId) BackendMomentSession
     , keyCounter : Int
     }
 
 
-getQuestionId : Dict QuestionId v -> UserId -> QuestionId
+getQuestionId : Dict MomentId v -> UserId -> MomentId
 getQuestionId questions userId =
     Dict.filter
-        (\(QuestionId userId_ _) _ -> userId_ == userId)
+        (\(MomentId userId_ _) _ -> userId_ == userId)
         questions
         |> Dict.size
-        |> QuestionId userId
+        |> MomentId userId
 
 
 type LocalQnaMsg
-    = ToggleUpvote QuestionId
-    | CreateQuestion Time.Posix NonemptyString
-    | TogglePin QuestionId Time.Posix
-    | DeleteQuestion QuestionId
+    = CreateQuestion Time.Posix NonemptyString
+    | DeleteQuestion MomentId
 
 
 type ConfirmLocalQnaMsg
-    = ToggleUpvoteResponse
-    | CreateQuestionResponse Time.Posix
-    | PinQuestionResponse Time.Posix
+    = CreateQuestionResponse Time.Posix
     | DeleteQuestionResponse
 
 
 type ServerQnaMsg
-    = VoteAdded QuestionId
-    | VoteRemoved QuestionId
-    | NewQuestion QuestionId Time.Posix NonemptyString
-    | QuestionPinned QuestionId (Maybe Time.Posix)
-    | QuestionDeleted QuestionId
+    = NewQuestion MomentId Time.Posix NonemptyString
+    | QuestionDeleted MomentId
 
 
 type FrontendMsg
@@ -105,11 +97,8 @@ type FrontendMsg
     | PressedCreateQnaSession
     | TypedQuestion String
     | PressedCreateQuestion
-    | PressedToggleUpvote QuestionId
-    | PressedTogglePin QuestionId
     | GotCurrentTime Time.Posix
-    | PressedDownloadQuestions
-    | PressedDeleteQuestion QuestionId
+    | PressedDeleteQuestion MomentId
     | PressedCopyHostUrl
     | PressedCopyUrl
     | CheckIfConnected Time.Posix
@@ -128,7 +117,6 @@ type BackendMsg
     | ToBackendWithTime SessionId ClientId ToBackend Time.Posix
     | UserDisconnected SessionId ClientId
     | UserConnected SessionId ClientId
-    | CheckSessions Time.Posix
 
 
 type ToFrontend
@@ -139,10 +127,10 @@ type ToFrontend
         (Result
             ()
             { isHost : Maybe (CryptographicKey HostSecret)
-            , qnaSession : QnaSession
+            , qnaSession : MomentSession
             }
         )
-    | GetQnaSessionWithHostInviteResponse (CryptographicKey HostSecret) (Result () ( CryptographicKey QnaSessionId, QnaSession ))
+    | GetQnaSessionWithHostInviteResponse (CryptographicKey HostSecret) (Result () ( CryptographicKey QnaSessionId, MomentSession ))
     | CreateQnaSessionResponse (CryptographicKey QnaSessionId) (CryptographicKey HostSecret)
     | CheckIfConnectedResponse
     | NewConnection

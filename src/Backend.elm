@@ -6,10 +6,8 @@ import Duration
 import Id exposing (ClientId(..), CryptographicKey, QnaSessionId, SessionId(..), UserId(..))
 import Lamdera
 import List.Extra as List
+import Moment exposing (BackendMomentSession, MomentId)
 import Network exposing (ChangeId)
-import QnaSession exposing (BackendQnaSession)
-import Quantity
-import Question exposing (BackendQuestion, QuestionId)
 import Task
 import Time
 import Types exposing (..)
@@ -60,7 +58,6 @@ subscriptions _ =
     SubBatch
         [ ClientDisconnected UserDisconnected
         , ClientConnected UserConnected
-        , TimeEvery Duration.hour CheckSessions
         ]
 
 
@@ -97,19 +94,6 @@ update msg model =
         UserConnected _ clientId ->
             ( model, SendToFrontend clientId NewConnection )
 
-        CheckSessions currentTime ->
-            ( { model
-                | qnaSessions =
-                    Dict.filter
-                        (\_ qnaSession ->
-                            Duration.from (QnaSession.lastActivity qnaSession) currentTime
-                                |> Quantity.lessThan (Duration.days 14)
-                        )
-                        model.qnaSessions
-              }
-            , Batch []
-            )
-
 
 updateFromFrontend : SessionId -> ClientId -> ToBackend -> BackendModel -> ( BackendModel, BackendEffect )
 updateFromFrontend sessionId clientId msg model =
@@ -119,7 +103,7 @@ updateFromFrontend sessionId clientId msg model =
 updateQnaSession :
     CryptographicKey QnaSessionId
     -> SessionId
-    -> (UserId -> BackendQnaSession -> ( BackendQnaSession, BackendEffect ))
+    -> (UserId -> BackendMomentSession -> ( BackendMomentSession, BackendEffect ))
     -> BackendModel
     -> ( BackendModel, BackendEffect )
 updateQnaSession qnaSessionId sessionId updateFunc model =
@@ -155,65 +139,17 @@ updateQnaSession_ :
     -> LocalQnaMsg
     -> CryptographicKey QnaSessionId
     -> UserId
-    -> BackendQnaSession
-    -> ( BackendQnaSession, BackendEffect )
+    -> BackendMomentSession
+    -> ( BackendMomentSession, BackendEffect )
 updateQnaSession_ sessionId clientId currentTime changeId localQnaMsg qnaSessionId userId qnaSession =
     case localQnaMsg of
-        ToggleUpvote questionId ->
-            case Dict.get questionId qnaSession.questions of
-                Just question ->
-                    let
-                        question2 : BackendQuestion
-                        question2 =
-                            { question | votes = toggle sessionId question.votes }
-
-                        serverMsg : ServerQnaMsg
-                        serverMsg =
-                            if Set.member sessionId question.votes then
-                                VoteRemoved questionId
-
-                            else
-                                VoteAdded questionId
-                    in
-                    ( { qnaSession
-                        | questions = Dict.insert questionId question2 qnaSession.questions
-                      }
-                    , Set.toList qnaSession.connections
-                        |> List.map
-                            (\clientId_ ->
-                                if clientId == clientId_ then
-                                    SendToFrontend
-                                        clientId_
-                                        (LocalConfirmQnaMsgResponse qnaSessionId changeId ToggleUpvoteResponse)
-
-                                else
-                                    SendToFrontend
-                                        clientId_
-                                        (ServerMsgResponse qnaSessionId serverMsg)
-                            )
-                        |> Batch
-                    )
-
-                Nothing ->
-                    ( qnaSession, Batch [] )
-
         CreateQuestion _ content ->
             let
-                questionId : QuestionId
+                questionId : MomentId
                 questionId =
                     Types.getQuestionId qnaSession.questions userId
             in
-            ( { qnaSession
-                | questions =
-                    Dict.insert
-                        questionId
-                        { creationTime = currentTime
-                        , content = content
-                        , isPinned = Nothing
-                        , votes = Set.empty
-                        }
-                        qnaSession.questions
-              }
+            ( Moment.addMoment questionId currentTime content qnaSession
             , Set.toList qnaSession.connections
                 |> List.map
                     (\clientId_ ->
@@ -230,69 +166,9 @@ updateQnaSession_ sessionId clientId currentTime changeId localQnaMsg qnaSession
                 |> Batch
             )
 
-        TogglePin questionId _ ->
-            if Set.member sessionId qnaSession.host then
-                case Dict.get questionId qnaSession.questions of
-                    Just question ->
-                        let
-                            pinStatus : Maybe Time.Posix
-                            pinStatus =
-                                case question.isPinned of
-                                    Just _ ->
-                                        Nothing
-
-                                    Nothing ->
-                                        Just currentTime
-                        in
-                        ( { qnaSession
-                            | questions =
-                                Dict.insert
-                                    questionId
-                                    { question | isPinned = pinStatus }
-                                    qnaSession.questions
-                          }
-                        , Set.toList qnaSession.connections
-                            |> List.map
-                                (\clientId_ ->
-                                    if clientId == clientId_ then
-                                        SendToFrontend
-                                            clientId_
-                                            (LocalConfirmQnaMsgResponse
-                                                qnaSessionId
-                                                changeId
-                                                (PinQuestionResponse currentTime)
-                                            )
-
-                                    else
-                                        SendToFrontend
-                                            clientId_
-                                            (ServerMsgResponse qnaSessionId (QuestionPinned questionId pinStatus))
-                                )
-                            |> Batch
-                        )
-
-                    Nothing ->
-                        ( qnaSession, Batch [] )
-
-            else
-                ( qnaSession, Batch [] )
-
         DeleteQuestion questionId ->
-            if Question.isCreator userId questionId then
-                ( { qnaSession
-                    | questions =
-                        Dict.update questionId
-                            (Maybe.andThen
-                                (\question ->
-                                    if question.isPinned == Nothing then
-                                        Nothing
-
-                                    else
-                                        Just question
-                                )
-                            )
-                            qnaSession.questions
-                  }
+            if Moment.isCreator userId questionId then
+                ( { qnaSession | questions = Dict.remove questionId qnaSession.questions }
                 , Set.toList qnaSession.connections
                     |> List.map
                         (\clientId_ ->
@@ -317,7 +193,7 @@ updateQnaSession_ sessionId clientId currentTime changeId localQnaMsg qnaSession
                 ( qnaSession, Batch [] )
 
 
-addOrGetUserId : BackendQnaSession -> SessionId -> ClientId -> ( BackendQnaSession, UserId )
+addOrGetUserId : BackendMomentSession -> SessionId -> ClientId -> ( BackendMomentSession, UserId )
 addOrGetUserId qnaSession sessionId clientId =
     let
         newUserId =
@@ -371,7 +247,7 @@ updateFromFrontendWithTime sessionId clientId msg model currentTime =
                             hostSecret
                             (Ok
                                 ( qnaSessionId
-                                , QnaSession.backendToFrontend sessionId userId qnaSession
+                                , Moment.backendToFrontend userId qnaSession
                                 )
                             )
                         )
@@ -405,7 +281,7 @@ updateFromFrontendWithTime sessionId clientId msg model currentTime =
 
                                     else
                                         Nothing
-                                , qnaSession = QnaSession.backendToFrontend sessionId userId qnaSession
+                                , qnaSession = Moment.backendToFrontend userId qnaSession
                                 }
                             )
                         )
@@ -428,7 +304,7 @@ updateFromFrontendWithTime sessionId clientId msg model currentTime =
                 | qnaSessions =
                     Dict.insert
                         qnaSessionId
-                        (QnaSession.initBackend sessionId clientId hostSecret currentTime qnaSessionName)
+                        (Moment.initBackend sessionId clientId hostSecret currentTime qnaSessionName)
                         model2.qnaSessions
               }
             , SendToFrontend clientId (CreateQnaSessionResponse qnaSessionId hostSecret)

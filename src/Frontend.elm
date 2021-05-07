@@ -19,10 +19,10 @@ import Html.Events
 import Id exposing (CryptographicKey(..), HostSecret, QnaSessionId, UserId(..))
 import Json.Decode
 import Lamdera
+import Moment exposing (Moment, MomentId, MomentSession)
 import Network exposing (Change(..))
-import QnaSession exposing (QnaSession)
-import Quantity
-import Question exposing (Question, QuestionId)
+import Pixels exposing (Pixels)
+import Quantity exposing (Quantity)
 import Simple.Animation as Animation exposing (Animation)
 import Simple.Animation.Animated as Animated
 import Simple.Animation.Property as Property
@@ -244,7 +244,9 @@ update msg model =
                         Ok nonempty ->
                             let
                                 localMsg =
-                                    CreateQuestion (Maybe.withDefault (Time.millisToPosix 0) model.currentTime) nonempty
+                                    CreateQuestion
+                                        (Maybe.withDefault (Time.millisToPosix 0) model.currentTime)
+                                        nonempty
                             in
                             ( { inQnaSession
                                 | networkModel =
@@ -271,21 +273,6 @@ update msg model =
                 )
                 model
 
-        PressedToggleUpvote questionId ->
-            updateInQnaSession (addLocalChange (ToggleUpvote questionId)) model
-
-        PressedTogglePin questionId ->
-            updateInQnaSession
-                (let
-                    localMsg =
-                        TogglePin
-                            questionId
-                            (Maybe.withDefault (Time.millisToPosix 0) model.currentTime)
-                 in
-                 addLocalChange localMsg
-                )
-                model
-
         GotCurrentTime currentTime ->
             ( { model
                 | currentTime = Just currentTime
@@ -293,38 +280,6 @@ update msg model =
               }
             , Batch_ []
             )
-
-        PressedDownloadQuestions ->
-            updateInQnaSession
-                (\inQnaSession ->
-                    ( inQnaSession
-                    , FileDownload
-                        "questions.csv"
-                        "text/csv"
-                        (Csv.Encode.encode
-                            { encoder =
-                                Csv.Encode.withFieldNames
-                                    (\question ->
-                                        [ ( "votes", String.fromInt (Question.votes question) )
-                                        , ( "pinned"
-                                          , if question.isPinned == Nothing then
-                                                "0"
-
-                                            else
-                                                "1"
-                                          )
-                                        , ( "question", NonemptyString.toString question.content )
-                                        ]
-                                    )
-                            , fieldSeparator = ';'
-                            }
-                            (Dict.values (Network.localState qnaSessionUpdate inQnaSession.networkModel).questions
-                                |> List.sortBy (.creationTime >> Time.posixToMillis)
-                            )
-                        )
-                    )
-                )
-                model
 
         PressedDeleteQuestion questionId ->
             updateInQnaSession
@@ -447,101 +402,34 @@ updateInQnaSession updateFunc model =
             ( model, Batch_ [] )
 
 
-toggleUpvote : QuestionId -> QnaSession -> QnaSession
-toggleUpvote questionId qnaSession =
-    { qnaSession
-        | questions =
-            Dict.update
-                questionId
-                (Maybe.map (\question -> { question | isUpvoted = not question.isUpvoted }))
-                qnaSession.questions
-    }
-
-
-pinQuestion : QuestionId -> Time.Posix -> QnaSession -> QnaSession
-pinQuestion questionId currentTime qnaSession =
-    { qnaSession
-        | questions =
-            Dict.update
-                questionId
-                (Maybe.map
-                    (\question ->
-                        { question
-                            | isPinned =
-                                case question.isPinned of
-                                    Just _ ->
-                                        Nothing
-
-                                    Nothing ->
-                                        Just currentTime
-                        }
-                    )
-                )
-                qnaSession.questions
-    }
-
-
-createQuestion : Time.Posix -> NonemptyString -> QnaSession -> QnaSession
-createQuestion creationTime content qnaSession =
-    let
-        questionId : QuestionId
-        questionId =
-            Types.getQuestionId qnaSession.questions qnaSession.userId
-    in
-    { qnaSession
-        | questions =
-            Dict.insert
-                questionId
-                { creationTime = creationTime
-                , content = content
-                , isPinned = Nothing
-                , otherVotes = 0
-                , isUpvoted = False
-                }
-                qnaSession.questions
-    }
-
-
-deleteQuestion : QuestionId -> QnaSession -> QnaSession
+deleteQuestion : MomentId -> MomentSession -> MomentSession
 deleteQuestion questionId qnaSession =
     { qnaSession | questions = Dict.remove questionId qnaSession.questions }
 
 
-qnaSessionUpdate : Change LocalQnaMsg ConfirmLocalQnaMsg ServerQnaMsg -> QnaSession -> QnaSession
+qnaSessionUpdate : Change LocalQnaMsg ConfirmLocalQnaMsg ServerQnaMsg -> MomentSession -> MomentSession
 qnaSessionUpdate msg qnaSession =
     case msg of
-        LocalChange _ (ToggleUpvote questionId) ->
-            toggleUpvote questionId qnaSession
-
         LocalChange _ (CreateQuestion creationTime content) ->
-            createQuestion creationTime content qnaSession
-
-        LocalChange _ (TogglePin questionId pinTime) ->
-            pinQuestion questionId pinTime qnaSession
+            let
+                questionId : MomentId
+                questionId =
+                    Types.getQuestionId qnaSession.questions qnaSession.userId
+            in
+            Moment.addMoment questionId creationTime content qnaSession
 
         LocalChange _ (DeleteQuestion questionId) ->
             deleteQuestion questionId qnaSession
 
-        ConfirmLocalChange _ localChange ToggleUpvoteResponse ->
-            case localChange of
-                ToggleUpvote questionId ->
-                    toggleUpvote questionId qnaSession
-
-                _ ->
-                    qnaSession
-
         ConfirmLocalChange _ localChange (CreateQuestionResponse creationTime) ->
             case localChange of
                 CreateQuestion _ content ->
-                    createQuestion creationTime content qnaSession
-
-                _ ->
-                    qnaSession
-
-        ConfirmLocalChange _ localChange (PinQuestionResponse pinTime) ->
-            case localChange of
-                TogglePin questionId _ ->
-                    pinQuestion questionId pinTime qnaSession
+                    let
+                        questionId : MomentId
+                        questionId =
+                            Types.getQuestionId qnaSession.questions qnaSession.userId
+                    in
+                    Moment.addMoment questionId creationTime content qnaSession
 
                 _ ->
                     qnaSession
@@ -555,50 +443,7 @@ qnaSessionUpdate msg qnaSession =
                     qnaSession
 
         ServerChange (NewQuestion questionId creationTime content) ->
-            { qnaSession
-                | questions =
-                    Dict.insert questionId
-                        { creationTime = creationTime
-                        , content = content
-                        , isPinned = Nothing
-                        , otherVotes = 0
-                        , isUpvoted = False
-                        }
-                        qnaSession.questions
-            }
-
-        ServerChange (VoteAdded questionId) ->
-            { qnaSession
-                | questions =
-                    Dict.update
-                        questionId
-                        (Maybe.map
-                            (\question -> { question | otherVotes = question.otherVotes + 1 })
-                        )
-                        qnaSession.questions
-            }
-
-        ServerChange (VoteRemoved questionId) ->
-            { qnaSession
-                | questions =
-                    Dict.update
-                        questionId
-                        (Maybe.map
-                            (\question -> { question | otherVotes = question.otherVotes - 1 })
-                        )
-                        qnaSession.questions
-            }
-
-        ServerChange (QuestionPinned questionId maybePinned) ->
-            { qnaSession
-                | questions =
-                    Dict.update
-                        questionId
-                        (Maybe.map
-                            (\question -> { question | isPinned = maybePinned })
-                        )
-                        qnaSession.questions
-            }
+            Moment.addMoment questionId creationTime content qnaSession
 
         ServerChange (QuestionDeleted questionId) ->
             deleteQuestion questionId qnaSession
@@ -673,7 +518,7 @@ updateFromBackend msg model =
                             InQnaSession
                                 (Types.initInQnaSession
                                     qnaSessionId
-                                    (QnaSession.init qnaSessionName)
+                                    (Moment.init qnaSessionName)
                                     (Just hostSecret)
                                 )
                       }
@@ -773,7 +618,7 @@ view model =
 
                 InQnaSession inQnaSession ->
                     let
-                        qnaSession : QnaSession
+                        qnaSession : MomentSession
                         qnaSession =
                             Network.localState qnaSessionUpdate inQnaSession.networkModel
                     in
@@ -830,43 +675,11 @@ notConnectedView model =
             Element.none
 
 
-hostView : Maybe Time.Posix -> QnaSession -> Element FrontendMsg
+hostView : Maybe Time.Posix -> MomentSession -> Element FrontendMsg
 hostView copiedHostUrl qnaSession =
     Element.column
         [ Element.width Element.fill, Element.spacing 12 ]
         [ copyHostUrlButton copiedHostUrl
-        , animatedParagraph
-            (Animation.fromTo
-                { duration = 2000, options = [] }
-                [ Property.opacity 0 ]
-                [ Property.opacity <|
-                    if Dict.isEmpty qnaSession.questions then
-                        0
-
-                    else
-                        1
-                ]
-            )
-            [ smallFont
-            , (if Dict.isEmpty qnaSession.questions then
-                "none"
-
-               else
-                "auto"
-              )
-                |> Html.Attributes.style "pointer-events"
-                |> Element.htmlAttribute
-            ]
-            [ Element.text "Questions will be deleted after 14 days of inactivity. "
-            , Element.Input.button
-                [ Element.Font.color <| Element.rgb 0.2 0.2 1
-                , Element.Border.widthEach { left = 0, right = 0, top = 0, bottom = 1 }
-                , Element.Border.color <| Element.rgba 0 0 0 0
-                , Element.mouseOver [ Element.Border.color <| Element.rgb 0.2 0.2 1 ]
-                ]
-                { onPress = Just PressedDownloadQuestions, label = Element.text "Click here" }
-            , Element.text " to download them."
-            ]
         ]
 
 
@@ -1011,75 +824,15 @@ questionsView :
     -> Maybe Time.Posix
     -> Bool
     -> UserId
-    -> Dict QuestionId Question
+    -> Dict MomentId Moment
     -> Element FrontendMsg
 questionsView qnaSessionId maybeCopiedUrl currentTime isHost userId questions =
-    let
-        containerStyle =
-            [ Element.height Element.fill
-            , Element.width Element.fill
-            , Element.Border.rounded 4
-            , Element.scrollbars
-            , Element.htmlAttribute <| Html.Attributes.id questionsViewId
-            , Element.Border.width 1
-            , Element.Border.color <| Element.rgb 0.5 0.5 0.5
-            ]
-
-        pinnedQuestions : List ( String, Element FrontendMsg )
-        pinnedQuestions =
-            Dict.toList questions
-                |> List.filterMap
-                    (\( questionId, question ) ->
-                        question.isPinned |> Maybe.map (\pinTime -> ( questionId, pinTime, question ))
-                    )
-                |> List.sortBy (\( _, pinTime, _ ) -> Time.posixToMillis pinTime)
-                |> List.map
-                    (\( questionId, _, question ) ->
-                        keyedQuestion False True ( questionId, question )
-                    )
-
-        unpinnedQuestions : List ( String, Element FrontendMsg )
-        unpinnedQuestions =
-            Dict.toList questions
-                |> List.filter (Tuple.second >> .isPinned >> (==) Nothing)
-                |> List.sortWith
-                    (\( _, a ) ( _, b ) ->
-                        case compare (Question.votes a) (Question.votes b) of
-                            GT ->
-                                LT
-
-                            LT ->
-                                GT
-
-                            EQ ->
-                                compare (Time.posixToMillis a.creationTime) (Time.posixToMillis b.creationTime)
-                    )
-                |> List.indexedMap
-                    (\index value ->
-                        keyedQuestion (index == 0 && not (List.isEmpty pinnedQuestions)) False value
-                    )
-
-        keyedQuestion : Bool -> Bool -> ( QuestionId, Question ) -> ( String, Element FrontendMsg )
-        keyedQuestion isFirstUnpinnedQuestion isPinned ( questionId, question ) =
-            ( Question.questionIdToString questionId
-            , questionView isFirstUnpinnedQuestion isPinned currentTime isHost userId questionId question
-            )
-    in
-    if Dict.isEmpty questions then
-        Element.el containerStyle
-            (Element.column
-                [ Element.width Element.fill
-                , Element.centerY
-                , Element.spacing 16
-                , Element.padding 8
-                ]
-                (emptyContainer qnaSessionId isHost maybeCopiedUrl)
-            )
-
-    else
-        pinnedQuestions
-            ++ unpinnedQuestions
-            |> Element.Keyed.column containerStyle
+    Element.el
+        (List.map
+            (\question -> questionView currentTime isHost userId question |> Element.inFront)
+            (Dict.values questions)
+        )
+        Element.none
 
 
 emptyContainer : CryptographicKey QnaSessionId -> Bool -> Maybe Time.Posix -> List (Element FrontendMsg)
@@ -1155,132 +908,38 @@ animatedEl =
     animatedUi Element.el
 
 
-questionView : Bool -> Bool -> Maybe Time.Posix -> Bool -> UserId -> QuestionId -> Question -> Element FrontendMsg
-questionView isFirstUnpinnedQuestion isPinned currentTime isHost userId questionId question =
-    animatedRow
-        (Animation.fromTo
-            { duration = 1500, options = [] }
-            [ Property.backgroundColor
-                (if question.isPinned == Nothing then
-                    if
-                        currentTime
-                            |> Maybe.map (\time -> Question.isNewQuestion time question)
-                            |> Maybe.withDefault False
-                    then
-                        "lightgreen"
+pixelLength : Quantity Int Pixels -> Element.Length
+pixelLength =
+    Pixels.inPixels >> Element.px
 
-                    else
-                        "white"
 
-                 else
-                    "lightyellow"
-                )
+questionView : Maybe Time.Posix -> Bool -> UserId -> Moment -> Element FrontendMsg
+questionView currentTime isHost userId question =
+    Element.el
+        [ Element.moveRight <| toFloat <| Moment.momentColumn question * 100
+        , Quantity.multiplyBy (Moment.momentRow question) Moment.height
+            |> Pixels.inPixels
+            |> toFloat
+            |> Element.moveDown
+        , Element.width <| Element.px (Moment.width question * 100)
+        , Element.height <| pixelLength Moment.height
+        , Element.Font.center
+        , Element.Font.size <| Moment.fontSize question
+        , Element.paddingXY 4 4
+        ]
+        (Element.el
+            [ Element.width Element.fill
+            , Element.height Element.fill
+            , Element.Background.color <| Element.rgb 0.8 0.8 0.8
+            , Element.paddingXY 4 0
             ]
-            [ Property.backgroundColor
-                (if question.isPinned == Nothing then
-                    "white"
-
-                 else
-                    "lightyellow"
-                )
-            ]
-        )
-        [ Element.paddingEach { left = 8, right = 12, top = 8, bottom = 8 }
-        , Element.spacing 8
-        , Element.width Element.fill
-        , Element.inFront
-            (if isFirstUnpinnedQuestion then
-                let
-                    lineColor =
-                        Element.rgb 0.5 0.5 0.5
-                in
-                Element.row
-                    [ Element.width Element.fill
-                    , Element.paddingXY 8 0
-                    , Element.alignTop
-                    , Element.Font.size 14
-                    , Element.spacing 8
-                    , Element.moveUp 7
-                    ]
-                    [ Element.el
-                        [ Element.width Element.fill
-                        , Element.height (Element.px 1)
-                        , Element.Background.color lineColor
-                        , Element.centerY
-                        ]
-                        Element.none
-                    , Element.text "Pinned 📌"
-                    , Element.el
-                        [ Element.width (Element.px 24)
-                        , Element.height (Element.px 1)
-                        , Element.Background.color lineColor
-                        , Element.centerY
-                        ]
-                        Element.none
-                    ]
-
-             else
-                Element.none
-            )
-        ]
-        [ upvoteButton questionId question
-        , Element.paragraph
-            [ Element.htmlAttribute <| Html.Attributes.style "word-break" "break-word" ]
-            [ Element.text (NonemptyString.toString question.content) ]
-        , if isHost then
-            Element.Input.button
-                (buttonStyle ++ [ Element.padding 8, smallFont ])
-                { onPress = Just (PressedTogglePin questionId)
-                , label =
-                    case question.isPinned of
-                        Just _ ->
-                            Element.text "Unpin"
-
-                        Nothing ->
-                            Element.text "Answer"
-                }
-
-          else if Question.isCreator userId questionId && not isPinned then
-            Element.Input.button
-                (buttonStyle ++ [ smallFont, Element.paddingXY 4 6 ])
-                { onPress = Just (PressedDeleteQuestion questionId)
-                , label = Element.text "🗑️"
-                }
-
-          else
-            Element.none
-        ]
-
-
-upvoteButton : QuestionId -> Question -> Element FrontendMsg
-upvoteButton questionId question =
-    Element.Input.button
-        [ Element.Border.rounded 999
-        , Element.padding 8
-        , Element.Background.color <|
-            if question.isUpvoted then
-                Element.rgb 0.92 0.78 0.68
-
-            else
-                Element.rgb 0.9 0.9 0.9
-        , Element.width <| Element.px 48
-        , Element.height <| Element.px 48
-        , Element.Border.width 2
-        , Element.Border.color <|
-            if question.isUpvoted then
-                Element.rgb 0.8 0.4 0.35
-
-            else
-                Element.rgb 0.4 0.4 0.4
-        ]
-        { onPress = Just (PressedToggleUpvote questionId)
-        , label =
-            Element.row
-                [ Element.centerX, Element.centerY, smallFont, Element.spacing 2 ]
-                [ Element.text (String.fromInt (Question.votes question))
-                , Element.el [ Element.Font.size 14 ] (Element.text "❤️")
+            (Element.paragraph
+                [ Element.centerY ]
+                [ NonemptyString.toString (Moment.momentContent question)
+                    |> Element.text
                 ]
-        }
+            )
+        )
 
 
 buttonStyle : List (Element.Attr () msg)
