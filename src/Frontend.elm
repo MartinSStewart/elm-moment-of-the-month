@@ -14,6 +14,7 @@ import Browser exposing (UrlRequest(..))
 import Browser.Dom
 import Browser.Events
 import Browser.Navigation
+import Doodads
 import Duration
 import Element exposing (Element)
 import Element.Background
@@ -25,6 +26,7 @@ import File.Download
 import Html exposing (Html)
 import Html.Attributes
 import Html.Events
+import Html.Keyed
 import Id exposing (CryptographicKey(..), HostSecret, QnaSessionId, UserId(..))
 import Json.Decode
 import Lamdera
@@ -117,15 +119,15 @@ effectToCmd effect =
 
         ScrollEffect ->
             Cmd.batch
-                [ Browser.Dom.getViewport
-                    |> Task.andThen
-                        (\{ viewport } ->
-                            Browser.Dom.setViewport
-                                viewport.x
-                                (viewport.y + toFloat (Pixels.inPixels Moment.momentHeight))
-                        )
-                    |> Task.perform (always NoOpFrontendMsg)
-                , Process.sleep 0 |> Task.perform (always RemoveTemporaryViewOffset)
+                [--Browser.Dom.getViewport
+                 --    |> Task.andThen
+                 --        (\{ viewport } ->
+                 --            Browser.Dom.setViewport
+                 --                viewport.x
+                 --                (viewport.y + toFloat (Pixels.inPixels Moment.momentHeight))
+                 --        )
+                 --    |> Task.perform (always NoOpFrontendMsg)
+                 --, Process.sleep 0 |> Task.perform (always RemoveTemporaryViewOffset)
                 ]
 
         Blur id ->
@@ -686,6 +688,15 @@ css =
   user-select: none;
 }
 
+@keyframes y-offset-adjust {
+    0% {
+        transform: translateY(-100px);
+    }
+    100% {
+        transform: translateY(0);
+    }
+}
+
 """
 
 
@@ -757,23 +768,19 @@ view model =
                         qnaSession =
                             Network.localState qnaSessionUpdate inQnaSession.networkModel
                     in
-                    Element.column
+                    Element.Keyed.column
                         [ Element.spacing 16
                         , Element.width <| Element.maximum 800 Element.fill
                         , Element.width Element.fill
                         , Element.height Element.fill
-                        , if model.addedRowLastFrame then
-                            Element.moveUp <| toFloat <| Pixels.inPixels Moment.momentHeight
-
-                          else
-                            Element.moveUp 0
                         ]
-                        [ questionsView
-                            inQnaSession.qnaSessionId
-                            inQnaSession.copiedUrl
-                            model.currentTime
-                            model.windowSize
-                            qnaSession
+                        [ ( String.fromInt (Moment.currentRow qnaSession)
+                          , questionsView
+                                inQnaSession.copiedUrl
+                                (Maybe.withDefault (Time.millisToPosix 0) model.currentTime)
+                                model.windowSize
+                                qnaSession
+                          )
                         ]
             )
         ]
@@ -861,7 +868,7 @@ questionInputView inQnaSession =
         , Element.alignBottom
         , Element.moveUp 16
         , Element.paddingEach { left = 16, right = 16, top = 20, bottom = 16 }
-        , Element.Background.color <| Element.rgba 0 0 0 0.5
+        , Element.Background.color <| Element.rgba 0 0 0 0.6
         , Element.Border.rounded 8
         ]
         [ Element.el
@@ -912,7 +919,7 @@ questionInputView inQnaSession =
                 , label =
                     Element.Input.labelAbove
                         [ Element.Font.color <| Element.rgb 1 1 1 ]
-                        (Element.text "What is your moment of the month?")
+                        (Element.text "What was your favorite moment this month?")
                 , text = inQnaSession.question
                 }
             )
@@ -955,21 +962,26 @@ errorColor =
 
 
 questionsView :
-    CryptographicKey QnaSessionId
-    -> Maybe Time.Posix
-    -> Maybe Time.Posix
+    Maybe Time.Posix
+    -> Time.Posix
     -> ( Quantity Int Pixels, Quantity Int Pixels )
     -> MomentSession
     -> Element FrontendMsg
-questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
+questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
     let
-        yOffset : Quantity Int Pixels
-        yOffset =
-            Quantity.plus topPadding towerHeight
+        currentRow_ =
+            Moment.currentRow momentSession
 
-        towerHeight : Quantity Int Pixels
-        towerHeight =
-            Quantity.multiplyBy (Moment.currentRow momentSession) Moment.momentHeight
+        yOffset_ =
+            yOffset currentRow_
+
+        yOffset : Int -> Quantity Int Pixels
+        yOffset currentRow =
+            Quantity.plus topPadding (towerHeight currentRow)
+
+        towerHeight : Int -> Quantity Int Pixels
+        towerHeight currentRow =
+            Quantity.multiplyBy currentRow Moment.momentHeight
                 |> Quantity.max
                     (windowHeight
                         |> Quantity.minus topPadding
@@ -985,125 +997,16 @@ questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) moment
         bottomPadding =
             Pixels.pixels 260
 
-        height : Quantity Int Pixels
-        height =
-            Quantity.plus yOffset bottomPadding
-
-        grass : Element msg
-        grass =
-            Element.el
-                [ Element.width Element.fill
-                , Element.height <| Element.px 42
-                , Element.Background.tiledX "./grass.png"
-                , Element.moveDown <| toFloat (Pixels.inPixels yOffset - 4)
-                ]
-                Element.none
-
-        tree : Element msg
-        tree =
-            Element.el
-                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 124), Element.moveRight 200 ]
-                (Element.image
-                    [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
-                    , Element.scale 3
-                    ]
-                    { src = "./tree.png", description = "" }
-                )
-
-        flowers : Element msg
-        flowers =
-            Element.el
-                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 20), Element.moveRight 50 ]
-                (Element.image
-                    [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
-                    , Element.scale 3
-                    ]
-                    { src = "./flowers.png", description = "" }
-                )
-
-        flowers2 : Element msg
-        flowers2 =
-            Element.el
-                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 20), Element.moveLeft 80, Element.alignRight ]
-                (Element.image
-                    [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
-                    , Element.scale 3
-                    ]
-                    { src = "./flowers.png", description = "" }
-                )
-
-        cloud1 : Element msg
-        cloud1 =
-            Element.el
-                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 600), Element.moveRight 200 ]
-                (Element.el
-                    [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1000s"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
-                    ]
-                    (Element.image
-                        [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
-                        , Element.scale 3
-                        ]
-                        { src = "./cloud.png", description = "" }
-                    )
-                )
-
-        cloud2 : Element msg
-        cloud2 =
-            Element.el
-                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 800), Element.moveRight 800 ]
-                (Element.el
-                    [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "500s"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
-                    ]
-                    (Element.image
-                        [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
-                        , Element.scale 3
-                        ]
-                        { src = "./cloud.png", description = "" }
-                    )
-                )
-
-        cloud3 : Element msg
-        cloud3 =
-            Element.el
-                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 1000)
-                , Element.moveRight 1200
-                ]
-                (Element.el
-                    [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "800s"
-                    , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
-                    ]
-                    (Element.image
-                        [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
-                        , Element.scale 3
-                        ]
-                        { src = "./cloud.png", description = "" }
-                    )
-                )
-
-        sun : Element msg
-        sun =
-            Element.image
-                [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
-                , Element.scale 3
-                , Element.alignRight
-                , Element.moveDown 32
-                , Element.moveLeft 32
-                ]
-                { src = "./sun.png", description = "" }
+        height : Int -> Quantity Int Pixels
+        height currentRow =
+            Quantity.plus (yOffset currentRow) bottomPadding
 
         ground : Element msg
         ground =
             Element.el
                 [ Element.width Element.fill
-                , Element.height <| pixelLength bottomPadding
+                , Element.height <| pixelLength (Quantity.plus bottomPadding Moment.momentHeight)
+                , Element.moveDown <| toFloat <| Pixels.inPixels Moment.momentHeight
                 , Element.Background.gradient
                     { angle = pi
                     , steps =
@@ -1118,23 +1021,26 @@ questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) moment
     in
     Element.el
         [ Element.width Element.fill
-        , Element.height (pixelLength height)
+        , Element.height <| pixelLength <| height currentRow_
+        , Element.htmlAttribute (Html.Attributes.style "animation-name" "y-offset-adjust")
+        , Element.htmlAttribute (Html.Attributes.style "animation-timing-function" "linear")
+        , Element.htmlAttribute (Html.Attributes.style "animation-duration" "1s")
         , Element.behindContent ground
-        , Element.behindContent grass
-        , Element.behindContent tree
-        , Element.behindContent flowers
-        , Element.behindContent flowers2
-        , Element.behindContent sun
-        , Element.behindContent cloud1
-        , Element.behindContent cloud2
-        , Element.behindContent cloud3
+        , Element.behindContent (Doodads.grass yOffset_)
+        , Element.behindContent (Doodads.tree yOffset_)
+        , Element.behindContent (Doodads.flowers yOffset_)
+        , Element.behindContent (Doodads.flowers2 yOffset_)
+        , Element.behindContent Doodads.sun
+        , Element.behindContent (Doodads.cloud1 yOffset_)
+        , Element.behindContent (Doodads.cloud2 yOffset_)
+        , Element.behindContent (Doodads.cloud3 yOffset_)
         , Element.clip
         , Element.inFront
             (Element.el
                 (Element.centerX
                     :: Element.width (Element.px (Moment.maxColumn * 100))
                     :: List.map
-                        (\question -> questionView yOffset question |> Element.inFront)
+                        (\moment -> questionView (yOffset currentRow_) currentTime moment |> Element.inFront)
                         (Dict.values momentSession.questions |> List.reverse)
                 )
                 Element.none
@@ -1143,35 +1049,42 @@ questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) moment
         Element.none
 
 
-questionView : Quantity Int Pixels -> Moment -> Element FrontendMsg
-questionView offsetY question =
+questionView : Quantity Int Pixels -> Time.Posix -> Moment -> Element FrontendMsg
+questionView offsetY currentTime moment =
     Element.el
-        [ Element.moveRight <| toFloat <| Moment.momentColumn question * 100
-        , Quantity.multiplyBy (Moment.momentRow question + 1) (Quantity.negate Moment.momentHeight)
+        [ Element.moveRight <| toFloat <| Moment.momentColumn moment * 100
+        , Quantity.multiplyBy (Moment.momentRow moment + 1) (Quantity.negate Moment.momentHeight)
             |> Quantity.plus offsetY
             |> Pixels.inPixels
             |> toFloat
             |> Element.moveDown
-        , Element.width <| Element.px (Moment.momentWidth question * 100)
+        , Element.width <| Element.px (Moment.momentWidth moment * 100)
         , Element.height <| pixelLength Moment.momentHeight
         , Element.Font.center
-        , Element.Font.size <| Moment.fontSize question
+        , Element.Font.size <| Moment.fontSize moment
         , Element.padding 2
         ]
         (Element.el
-            [ Element.width Element.fill
-            , Element.height Element.fill
-            , Element.Background.color <| Element.rgb 0.8 0.8 0.8
-            , Element.paddingXY 4 0
-            , Element.htmlAttribute <| Html.Attributes.style "animation-name" "block-fall"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1s"
-            ]
+            (Element.width Element.fill
+                :: Element.height Element.fill
+                :: Element.Background.color (Element.rgb 0.8 0.8 0.8)
+                :: Element.paddingXY 4 0
+                :: (if
+                        Duration.from (Moment.momentCreationTime moment) currentTime
+                            |> Quantity.lessThan Duration.second
+                    then
+                        [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "block-fall"
+                        , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+                        , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1s"
+                        ]
+
+                    else
+                        []
+                   )
+            )
             (Element.paragraph
                 [ Element.centerY ]
-                [ NonemptyString.toString (Moment.momentContent question)
-                    |> Element.text
-                ]
+                [ NonemptyString.toString (Moment.momentContent moment) |> Element.text ]
             )
         )
 

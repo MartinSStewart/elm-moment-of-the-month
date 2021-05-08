@@ -14,6 +14,7 @@ module Moment exposing
     , maxColumn
     , momentColumn
     , momentContent
+    , momentCreationTime
     , momentHeight
     , momentRow
     , momentWidth
@@ -127,6 +128,11 @@ momentContent (Moment moment) =
 momentWidth : Moment -> Int
 momentWidth moment =
     contentWidth (momentContent moment)
+
+
+momentCreationTime : Moment -> Time.Posix
+momentCreationTime (Moment moment) =
+    moment.creationTime
 
 
 fontSize : Moment -> Int
