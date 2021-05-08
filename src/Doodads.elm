@@ -116,6 +116,41 @@ cloud3 yOffset =
         )
 
 
+treasure : Quantity Int Pixels -> Element msg
+treasure yOffset =
+    Element.el
+        [ Element.moveDown <| toFloat (Pixels.inPixels yOffset + 150)
+        , Element.moveLeft 400
+        , Element.alignRight
+        ]
+        (Element.el
+            []
+            (Element.image
+                [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                , Element.scale 3
+                ]
+                { src = "./treasure.png", description = "" }
+            )
+        )
+
+
+skeleton : Quantity Int Pixels -> Element msg
+skeleton yOffset =
+    Element.el
+        [ Element.moveDown <| toFloat (Pixels.inPixels yOffset + 180)
+        , Element.moveRight 200
+        ]
+        (Element.el
+            []
+            (Element.image
+                [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                , Element.scale 3
+                ]
+                { src = "./skeleton.png", description = "" }
+            )
+        )
+
+
 sun : Element msg
 sun =
     Element.image

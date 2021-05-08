@@ -1018,6 +1018,8 @@ questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
         , Element.behindContent ground
         , Element.behindContent (Doodads.grass yOffset_)
         , Element.behindContent (Doodads.tree yOffset_)
+        , Element.behindContent (Doodads.treasure yOffset_)
+        , Element.behindContent (Doodads.skeleton yOffset_)
         , Element.behindContent (Doodads.flowers yOffset_)
         , Element.behindContent (Doodads.flowers2 yOffset_)
         , Element.behindContent Doodads.sun
