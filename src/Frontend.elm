@@ -677,7 +677,7 @@ css =
 
 view : FrontendModel -> { title : String, body : List (Html FrontendMsg) }
 view model =
-    { title = "Q&A"
+    { title = "Moment of the Month"
     , body =
         [ Element.layout
             (Element.inFront (notConnectedView model)
