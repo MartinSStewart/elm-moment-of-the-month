@@ -98,7 +98,7 @@ currentRow momentSession =
 
 maxColumn : Int
 maxColumn =
-    7
+    6
 
 
 type Moment

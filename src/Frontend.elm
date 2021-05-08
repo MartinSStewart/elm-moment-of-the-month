@@ -894,7 +894,7 @@ questionInputView inQnaSession =
                 , label =
                     Element.Input.labelAbove
                         [ Element.Font.color <| Element.rgb 1 1 1 ]
-                        (Element.text "What was your favorite moment this month?")
+                        (Element.paragraph [] [ Element.text "What was your favorite moment this month?" ])
                 , text = inQnaSession.question
                 }
             )
