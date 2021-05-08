@@ -224,7 +224,7 @@ urlEncoder (CryptographicKey qnaSessionId) =
 
 update : FrontendMsg -> FrontendModel -> ( FrontendModel, FrontendEffect )
 update msg model =
-    (case msg of
+    case msg of
         UrlClicked urlRequest ->
             case urlRequest of
                 Internal url ->
@@ -357,8 +357,6 @@ update msg model =
 
         GotWindowSize windowSize ->
             ( { model | windowSize = windowSize }, Batch_ [] )
-    )
-        |> checkRow model
 
 
 hostSecretToUrl : CryptographicKey HostSecret -> String
@@ -445,27 +443,6 @@ updateInQnaSession updateFunc model =
             ( model, Batch_ [] )
 
 
-checkRow : FrontendModel -> ( FrontendModel, FrontendEffect ) -> ( FrontendModel, FrontendEffect )
-checkRow before ( after, effects ) =
-    case ( before.remoteData, after.remoteData ) of
-        ( InQnaSession beforeQna, InQnaSession afterQna ) ->
-            let
-                beforeModel =
-                    Network.localState qnaSessionUpdate beforeQna.networkModel
-
-                afterModel =
-                    Network.localState qnaSessionUpdate afterQna.networkModel
-            in
-            if Moment.currentRow beforeModel /= Moment.currentRow afterModel then
-                ( { after | addedRowLastFrame = True }, ScrollEffect )
-
-            else
-                ( after, effects )
-
-        _ ->
-            ( after, effects )
-
-
 deleteQuestion : MomentId -> MomentSession -> MomentSession
 deleteQuestion questionId qnaSession =
     { qnaSession | questions = Dict.remove questionId qnaSession.questions }
@@ -515,7 +492,7 @@ qnaSessionUpdate msg qnaSession =
 
 updateFromBackend : ToFrontend -> FrontendModel -> ( FrontendModel, FrontendEffect )
 updateFromBackend msg model =
-    (case msg of
+    case msg of
         ServerMsgResponse qnaSessionId serverQnaMsg ->
             updateInQnaSession
                 (\inQnaSession ->
@@ -643,8 +620,6 @@ updateFromBackend msg model =
 
             else
                 ( { model | gotFirstConnectMsg = True }, Batch_ [] )
-    )
-        |> checkRow model
 
 
 css =
