@@ -936,6 +936,16 @@ errorColor =
     Element.rgb 0.8 0.2 0.2
 
 
+topPadding : Quantity Int Pixels
+topPadding =
+    Pixels.pixels 400
+
+
+bottomPadding : Quantity number Pixels
+bottomPadding =
+    Pixels.pixels 260
+
+
 questionsView :
     Maybe Time.Posix
     -> Time.Posix
@@ -964,13 +974,14 @@ questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
                         |> Quantity.plus Pixels.pixel
                     )
 
-        topPadding : Quantity Int Pixels
-        topPadding =
-            Pixels.pixels 400
-
-        bottomPadding : Quantity number Pixels
-        bottomPadding =
-            Pixels.pixels 260
+        towerTallerThanWindowHeight =
+            Quantity.multiplyBy currentRow_ Moment.momentHeight
+                |> Quantity.lessThan
+                    (windowHeight
+                        |> Quantity.minus topPadding
+                        |> Quantity.minus bottomPadding
+                        |> Quantity.plus Pixels.pixel
+                    )
 
         height : Int -> Quantity Int Pixels
         height currentRow =
@@ -997,7 +1008,11 @@ questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
     Element.el
         [ Element.width Element.fill
         , Element.height <| pixelLength <| height currentRow_
-        , Element.htmlAttribute (Html.Attributes.style "animation-name" "y-offset-adjust")
+        , if towerTallerThanWindowHeight then
+            Element.htmlAttribute (Html.Attributes.style "animation-name" "")
+
+          else
+            Element.htmlAttribute (Html.Attributes.style "animation-name" "y-offset-adjust")
         , Element.htmlAttribute (Html.Attributes.style "animation-timing-function" "linear")
         , Element.htmlAttribute (Html.Attributes.style "animation-duration" "1s")
         , Element.behindContent ground
@@ -1009,6 +1024,26 @@ questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
         , Element.behindContent (Doodads.cloud1 yOffset_)
         , Element.behindContent (Doodads.cloud2 yOffset_)
         , Element.behindContent (Doodads.cloud3 yOffset_)
+        , Element.inFront
+            (Element.el
+                [ yOffset_
+                    |> Quantity.minus (Quantity.multiplyBy currentRow_ Moment.momentHeight)
+                    |> Pixels.inPixels
+                    |> toFloat
+                    |> (+) -10
+                    |> Element.moveDown
+                , Element.centerX
+                , Element.moveLeft (78 + toFloat Moment.maxColumn * 100 / 2)
+                ]
+                (Element.text
+                    (if currentRow_ > 0 then
+                        String.fromInt (currentRow_ * 5) ++ " meters →"
+
+                     else
+                        ""
+                    )
+                )
+            )
         , Element.clip
         , Element.inFront
             (Element.el

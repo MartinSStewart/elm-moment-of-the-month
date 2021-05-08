@@ -59,11 +59,12 @@ cloud1 yOffset =
     Element.el
         [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 600), Element.moveRight 200 ]
         (Element.el
-            [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1000s"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
-            ]
+            []
+            --[ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1000s"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
+            --]
             (Element.image
                 [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
                 , Element.scale 3
@@ -78,11 +79,12 @@ cloud2 yOffset =
     Element.el
         [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 800), Element.moveRight 800 ]
         (Element.el
-            [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "500s"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
-            ]
+            []
+            --[ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-duration" "500s"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
+            --]
             (Element.image
                 [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
                 , Element.scale 3
@@ -99,11 +101,12 @@ cloud3 yOffset =
         , Element.moveRight 1200
         ]
         (Element.el
-            [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "800s"
-            , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
-            ]
+            []
+            --[ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-duration" "800s"
+            --, Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
+            --]
             (Element.image
                 [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
                 , Element.scale 3

@@ -98,7 +98,7 @@ currentRow momentSession =
 
 maxColumn : Int
 maxColumn =
-    6
+    7
 
 
 type Moment
@@ -184,6 +184,7 @@ getRow : Int -> { a | questions : Dict MomentId Moment } -> List ( MomentId, Mom
 getRow row momentSession =
     Dict.toList momentSession.questions
         |> List.filter (Tuple.second >> momentRow >> (==) row)
+        |> List.sortBy (Tuple.second >> momentColumn)
 
 
 type HostStatus
