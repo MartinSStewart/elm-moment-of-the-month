@@ -903,7 +903,7 @@ questionInputView inQnaSession =
                 buttonStyle
                 { onPress = Just PressedCreateQuestion
                 , label =
-                    Element.text "Submit question"
+                    Element.text "Submit"
                 }
             , case ( valiatedQuestion inQnaSession.question, inQnaSession.pressedCreateQuestion ) of
                 ( Err error, True ) ->
