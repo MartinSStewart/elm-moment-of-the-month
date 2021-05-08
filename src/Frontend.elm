@@ -1074,13 +1074,14 @@ questionView offsetY currentTime moment =
         , Element.height <| pixelLength Moment.momentHeight
         , Element.Font.center
         , Element.Font.size <| Moment.fontSize moment
-        , Element.padding 2
         ]
         (Element.el
             (Element.width Element.fill
                 :: Element.height Element.fill
                 :: Element.Background.color (Element.rgb 0.8 0.8 0.8)
                 :: Element.paddingXY 4 0
+                :: Element.Border.width 2
+                :: Element.Border.color (Element.rgb 0.5 0.5 0.5)
                 :: (if
                         Duration.from (Moment.momentCreationTime moment) currentTime
                             |> Quantity.lessThan Duration.second
