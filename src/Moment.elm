@@ -132,16 +132,16 @@ momentWidth moment =
 fontSize : Moment -> Int
 fontSize moment =
     let
-        content =
-            momentContent moment
+        contentLength =
+            momentContent moment |> String.Nonempty.length
     in
-    if String.Nonempty.length content > 150 then
+    if contentLength > 150 then
         14
 
-    else if String.Nonempty.length content > 100 then
+    else if contentLength > 100 then
         16
 
-    else if String.Nonempty.length content > 50 then
+    else if contentLength > 12 then
         20
 
     else

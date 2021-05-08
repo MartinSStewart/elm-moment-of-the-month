@@ -48,6 +48,7 @@ type alias InQnaSession_ =
     , copiedHostUrl : Maybe Time.Posix
     , copiedUrl : Maybe Time.Posix
     , isHost : Maybe (CryptographicKey HostSecret)
+    , lastHeightChange : Maybe Time.Posix
     }
 
 
@@ -61,6 +62,7 @@ initInQnaSession qnaSessionId qnaSesssion hostStatus =
     , copiedHostUrl = Nothing
     , copiedUrl = Nothing
     , isHost = hostStatus
+    , lastHeightChange = Nothing
     }
 
 

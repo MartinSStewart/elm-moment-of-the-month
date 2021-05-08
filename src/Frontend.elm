@@ -648,7 +648,7 @@ updateFromBackend msg model =
 css =
     """
 
-@keyframes beat {
+@keyframes block-fall {
     0% {
         transform: translateY(-1000px);
     }
@@ -663,6 +663,27 @@ css =
     }
 }
 
+@keyframes cloud-drift {
+    0% {
+        transform: translateX(0px);
+    }
+    50% {
+        transform: translateX(2000px);
+    }
+    50.001% {
+        transform: translateX(-2000px);
+    }
+    100% {
+        transform: translateY(0);
+    }
+}
+
+.pixel-art {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  pointer-event: none;
+  user-select: none;
 }
 
 """
@@ -673,29 +694,34 @@ view model =
     { title = "Q&A"
     , body =
         [ Element.layout
-            [ Element.inFront (notConnectedView model)
-            , Html.node "style" [] [ Html.text css ]
-                |> Element.html
-                |> Element.behindContent
-            , case model.remoteData of
-                InQnaSession inQnaSession ->
-                    let
-                        qnaSession : MomentSession
-                        qnaSession =
-                            Network.localState qnaSessionUpdate inQnaSession.networkModel
-                    in
-                    (case inQnaSession.isHost of
-                        Just _ ->
-                            hostView inQnaSession.copiedHostUrl qnaSession
+            (Element.inFront (notConnectedView model)
+                :: Element.htmlAttribute (Html.Attributes.style "scrollbar" "visible")
+                :: (Html.node "style" [] [ Html.text css ]
+                        |> Element.html
+                        |> Element.behindContent
+                   )
+                :: (case model.remoteData of
+                        InQnaSession inQnaSession ->
+                            let
+                                qnaSession : MomentSession
+                                qnaSession =
+                                    Network.localState qnaSessionUpdate inQnaSession.networkModel
+                            in
+                            [ (case inQnaSession.isHost of
+                                Just _ ->
+                                    hostView inQnaSession.copiedHostUrl qnaSession
 
-                        Nothing ->
-                            questionInputView inQnaSession
-                    )
-                        |> Element.inFront
+                                Nothing ->
+                                    questionInputView inQnaSession
+                              )
+                                |> Element.inFront
+                            , Element.Background.color (Element.rgb 0.95 0.95 1)
+                            ]
 
-                _ ->
-                    Element.inFront Element.none
-            ]
+                        _ ->
+                            []
+                   )
+            )
             (case model.remoteData of
                 Homepage ->
                     Element.column
@@ -833,7 +859,10 @@ questionInputView inQnaSession =
         , Element.spacing 16
         , Element.centerX
         , Element.alignBottom
-        , Element.padding 16
+        , Element.moveUp 16
+        , Element.paddingEach { left = 16, right = 16, top = 20, bottom = 16 }
+        , Element.Background.color <| Element.rgba 0 0 0 0.5
+        , Element.Border.rounded 8
         ]
         [ Element.el
             [ Element.inFront <|
@@ -859,7 +888,7 @@ questionInputView inQnaSession =
             , Element.width Element.fill
             ]
             (Element.Input.multiline
-                [ Element.height <| Element.px 120
+                [ Element.height <| Element.px 100
                 , Element.htmlAttribute <|
                     Html.Events.preventDefaultOn "keydown"
                         (Json.Decode.map3 (\key shift ctrl -> ( key, shift, ctrl ))
@@ -882,8 +911,8 @@ questionInputView inQnaSession =
                 , spellcheck = True
                 , label =
                     Element.Input.labelAbove
-                        []
-                        (Element.text "What do you want to ask?")
+                        [ Element.Font.color <| Element.rgb 1 1 1 ]
+                        (Element.text "What is your moment of the month?")
                 , text = inQnaSession.question
                 }
             )
@@ -934,27 +963,155 @@ questionsView :
     -> Element FrontendMsg
 questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
     let
+        yOffset : Quantity Int Pixels
         yOffset =
             Quantity.plus topPadding towerHeight
 
+        towerHeight : Quantity Int Pixels
         towerHeight =
             Quantity.multiplyBy (Moment.currentRow momentSession) Moment.momentHeight
-                |> Quantity.max (windowHeight |> Quantity.minus topPadding |> Quantity.minus bottomPadding)
+                |> Quantity.max
+                    (windowHeight
+                        |> Quantity.minus topPadding
+                        |> Quantity.minus bottomPadding
+                        |> Quantity.plus Pixels.pixel
+                    )
 
+        topPadding : Quantity Int Pixels
         topPadding =
             Pixels.pixels 400
 
+        bottomPadding : Quantity number Pixels
         bottomPadding =
             Pixels.pixels 260
 
+        height : Quantity Int Pixels
         height =
             Quantity.plus yOffset bottomPadding
 
-        background =
+        grass : Element msg
+        grass =
+            Element.el
+                [ Element.width Element.fill
+                , Element.height <| Element.px 42
+                , Element.Background.tiledX "./grass.png"
+                , Element.moveDown <| toFloat (Pixels.inPixels yOffset - 4)
+                ]
+                Element.none
+
+        tree : Element msg
+        tree =
+            Element.el
+                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 124), Element.moveRight 200 ]
+                (Element.image
+                    [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                    , Element.scale 3
+                    ]
+                    { src = "./tree.png", description = "" }
+                )
+
+        flowers : Element msg
+        flowers =
+            Element.el
+                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 20), Element.moveRight 50 ]
+                (Element.image
+                    [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                    , Element.scale 3
+                    ]
+                    { src = "./flowers.png", description = "" }
+                )
+
+        flowers2 : Element msg
+        flowers2 =
+            Element.el
+                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 20), Element.moveLeft 80, Element.alignRight ]
+                (Element.image
+                    [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                    , Element.scale 3
+                    ]
+                    { src = "./flowers.png", description = "" }
+                )
+
+        cloud1 : Element msg
+        cloud1 =
+            Element.el
+                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 600), Element.moveRight 200 ]
+                (Element.el
+                    [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1000s"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
+                    ]
+                    (Element.image
+                        [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                        , Element.scale 3
+                        ]
+                        { src = "./cloud.png", description = "" }
+                    )
+                )
+
+        cloud2 : Element msg
+        cloud2 =
+            Element.el
+                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 800), Element.moveRight 800 ]
+                (Element.el
+                    [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "500s"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
+                    ]
+                    (Element.image
+                        [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                        , Element.scale 3
+                        ]
+                        { src = "./cloud.png", description = "" }
+                    )
+                )
+
+        cloud3 : Element msg
+        cloud3 =
+            Element.el
+                [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 1000)
+                , Element.moveRight 1200
+                ]
+                (Element.el
+                    [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "cloud-drift"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "800s"
+                    , Element.htmlAttribute <| Html.Attributes.style "animation-iteration-count" "infinite"
+                    ]
+                    (Element.image
+                        [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                        , Element.scale 3
+                        ]
+                        { src = "./cloud.png", description = "" }
+                    )
+                )
+
+        sun : Element msg
+        sun =
+            Element.image
+                [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+                , Element.scale 3
+                , Element.alignRight
+                , Element.moveDown 32
+                , Element.moveLeft 32
+                ]
+                { src = "./sun.png", description = "" }
+
+        ground : Element msg
+        ground =
             Element.el
                 [ Element.width Element.fill
                 , Element.height <| pixelLength bottomPadding
-                , Element.Background.color <| Element.rgb 0.8 0.6 0.2
+                , Element.Background.gradient
+                    { angle = pi
+                    , steps =
+                        [ Element.rgb 0.8 0.6 0.2
+                        , Element.rgb 0.7 0.52 0.15
+                        , Element.rgb 0.4 0.3 0.2
+                        ]
+                    }
                 , Element.alignBottom
                 ]
                 Element.none
@@ -962,14 +1119,22 @@ questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) moment
     Element.el
         [ Element.width Element.fill
         , Element.height (pixelLength height)
-        , Element.Background.color (Element.rgb 0.95 0.95 1)
-        , Element.behindContent background
+        , Element.behindContent ground
+        , Element.behindContent grass
+        , Element.behindContent tree
+        , Element.behindContent flowers
+        , Element.behindContent flowers2
+        , Element.behindContent sun
+        , Element.behindContent cloud1
+        , Element.behindContent cloud2
+        , Element.behindContent cloud3
+        , Element.clip
         , Element.inFront
             (Element.el
                 (Element.centerX
                     :: Element.width (Element.px (Moment.maxColumn * 100))
                     :: List.map
-                        (\question -> questionView yOffset currentTime question |> Element.inFront)
+                        (\question -> questionView yOffset question |> Element.inFront)
                         (Dict.values momentSession.questions |> List.reverse)
                 )
                 Element.none
@@ -978,8 +1143,8 @@ questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) moment
         Element.none
 
 
-questionView : Quantity Int Pixels -> Maybe Time.Posix -> Moment -> Element FrontendMsg
-questionView offsetY currentTime question =
+questionView : Quantity Int Pixels -> Moment -> Element FrontendMsg
+questionView offsetY question =
     Element.el
         [ Element.moveRight <| toFloat <| Moment.momentColumn question * 100
         , Quantity.multiplyBy (Moment.momentRow question + 1) (Quantity.negate Moment.momentHeight)
@@ -998,7 +1163,7 @@ questionView offsetY currentTime question =
             , Element.height Element.fill
             , Element.Background.color <| Element.rgb 0.8 0.8 0.8
             , Element.paddingXY 4 0
-            , Element.htmlAttribute <| Html.Attributes.style "animation-name" "beat"
+            , Element.htmlAttribute <| Html.Attributes.style "animation-name" "block-fall"
             , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
             , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1s"
             ]
