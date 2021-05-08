@@ -7,6 +7,8 @@ import Duration exposing (Duration)
 import Id exposing (ClientId, CryptographicKey, HostSecret, QnaSessionId, SessionId, UserId(..))
 import Moment exposing (BackendMomentSession, HostStatus, MomentId(..), MomentSession)
 import Network exposing (ChangeId, NetworkModel)
+import Pixels exposing (Pixels)
+import Quantity exposing (Quantity)
 import String.Nonempty exposing (NonemptyString)
 import Time
 import Url exposing (Url)
@@ -18,6 +20,8 @@ type alias FrontendModel =
     , currentTime : Maybe Time.Posix
     , lastConnectionCheck : Maybe Time.Posix
     , gotFirstConnectMsg : Bool
+    , addedRowLastFrame : Bool
+    , windowSize : ( Quantity Int Pixels, Quantity Int Pixels )
     }
 
 
@@ -94,6 +98,7 @@ type FrontendMsg
     = UrlClicked UrlRequest
     | UrlChanged Url
     | NoOpFrontendMsg
+    | RemoveTemporaryViewOffset
     | PressedCreateQnaSession
     | TypedQuestion String
     | PressedCreateQuestion
@@ -102,6 +107,8 @@ type FrontendMsg
     | PressedCopyHostUrl
     | PressedCopyUrl
     | CheckIfConnected Time.Posix
+    | WindowResized ( Quantity Int Pixels, Quantity Int Pixels )
+    | GotWindowSize ( Quantity Int Pixels, Quantity Int Pixels )
 
 
 type ToBackend
@@ -150,8 +157,9 @@ type FrontendEffect
     | LoadUrl String
     | FileDownload String String String
     | CopyToClipboard String
-    | ScrollToBottom String
+    | ScrollEffect
     | Blur String
+    | GetWindowSize (( Quantity Int Pixels, Quantity Int Pixels ) -> FrontendMsg)
 
 
 type BackendSub
@@ -164,3 +172,4 @@ type BackendSub
 type FrontendSub
     = SubBatch_ (List FrontendSub)
     | TimeEvery_ Duration (Time.Posix -> FrontendMsg)
+    | WindowResize (( Quantity Int Pixels, Quantity Int Pixels ) -> FrontendMsg)

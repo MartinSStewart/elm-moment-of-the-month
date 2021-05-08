@@ -6,15 +6,17 @@ module Moment exposing
     , MomentSession
     , addMoment
     , backendToFrontend
+    , currentRow
     , fontSize
-    , height
     , init
     , initBackend
     , isCreator
+    , maxColumn
     , momentColumn
     , momentContent
+    , momentHeight
     , momentRow
-    , width
+    , momentWidth
     )
 
 import AssocList as Dict exposing (Dict)
@@ -42,20 +44,17 @@ addMoment :
     -> { a | questions : Dict MomentId Moment }
 addMoment momentId creationTime content momentSession =
     let
-        currentRow : Int
-        currentRow =
-            Dict.values momentSession.questions
-                |> List.maximumBy momentRow
-                |> Maybe.map momentRow
-                |> Maybe.withDefault 0
+        currentRow_ : Int
+        currentRow_ =
+            currentRow momentSession
 
         columnStart : Int
         columnStart =
-            getRow currentRow momentSession
+            getRow currentRow_ momentSession
                 |> List.maximumBy (Tuple.second >> momentColumn)
                 |> Maybe.map
                     (\( _, moment ) ->
-                        momentColumn moment + width moment
+                        momentColumn moment + momentWidth moment
                     )
                 |> Maybe.withDefault 0
 
@@ -78,14 +77,22 @@ addMoment momentId creationTime content momentSession =
                             columnStart
                     , row =
                         if columnEnd > maxColumn then
-                            currentRow + 1
+                            currentRow_ + 1
 
                         else
-                            currentRow
+                            currentRow_
                     }
                 )
                 momentSession.questions
     }
+
+
+currentRow : { a | questions : Dict MomentId Moment } -> Int
+currentRow momentSession =
+    Dict.values momentSession.questions
+        |> List.maximumBy momentRow
+        |> Maybe.map momentRow
+        |> Maybe.withDefault 0
 
 
 maxColumn : Int
@@ -117,8 +124,8 @@ momentContent (Moment moment) =
     moment.content
 
 
-width : Moment -> Int
-width moment =
+momentWidth : Moment -> Int
+momentWidth moment =
     contentWidth (momentContent moment)
 
 
@@ -128,7 +135,10 @@ fontSize moment =
         content =
             momentContent moment
     in
-    if String.Nonempty.length content > 100 then
+    if String.Nonempty.length content > 150 then
+        14
+
+    else if String.Nonempty.length content > 100 then
         16
 
     else if String.Nonempty.length content > 50 then
@@ -150,8 +160,8 @@ contentWidth content =
         1
 
 
-height : Quantity Int Pixels
-height =
+momentHeight : Quantity Int Pixels
+momentHeight =
     Pixels.pixels 100
 
 

@@ -1,10 +1,19 @@
-port module Frontend exposing (app, domain, init, qnaSessionUpdate, subscriptions, update, updateFromBackend, view)
+port module Frontend exposing
+    ( app
+    , domain
+    , init
+    , qnaSessionUpdate
+    , subscriptions
+    , update
+    , updateFromBackend
+    , view
+    )
 
 import AssocList as Dict exposing (Dict)
 import Browser exposing (UrlRequest(..))
 import Browser.Dom
+import Browser.Events
 import Browser.Navigation
-import Csv.Encode
 import Duration
 import Element exposing (Element)
 import Element.Background
@@ -22,6 +31,7 @@ import Lamdera
 import Moment exposing (Moment, MomentId, MomentSession)
 import Network exposing (Change(..))
 import Pixels exposing (Pixels)
+import Process
 import Quantity exposing (Quantity)
 import Simple.Animation as Animation exposing (Animation)
 import Simple.Animation.Animated as Animated
@@ -54,6 +64,7 @@ subscriptions _ =
     SubBatch_
         [ TimeEvery_ Duration.second GotCurrentTime
         , TimeEvery_ (Duration.seconds 10) CheckIfConnected
+        , WindowResize WindowResized
         ]
 
 
@@ -65,6 +76,9 @@ frontendSubToSub sub =
 
         TimeEvery_ duration msg ->
             Time.every (Duration.inMilliseconds duration) msg
+
+        WindowResize onResize ->
+            Browser.Events.onResize (\width height -> onResize ( Pixels.pixels width, Pixels.pixels height ))
 
 
 effectToCmd : FrontendEffect -> Cmd FrontendMsg
@@ -101,21 +115,34 @@ effectToCmd effect =
         CopyToClipboard text ->
             supermario_copy_to_clipboard_to_js text
 
-        ScrollToBottom viewportId ->
-            Browser.Dom.getViewportOf viewportId
-                |> Task.andThen
-                    (\{ scene, viewport } ->
-                        scrollToOf 200 questionsViewId (scene.height - viewport.height)
-                    )
-                |> Task.attempt (always NoOpFrontendMsg)
+        ScrollEffect ->
+            Cmd.batch
+                [ Browser.Dom.getViewport
+                    |> Task.andThen
+                        (\{ viewport } ->
+                            Browser.Dom.setViewport
+                                viewport.x
+                                (viewport.y + toFloat (Pixels.inPixels Moment.momentHeight))
+                        )
+                    |> Task.perform (always NoOpFrontendMsg)
+                , Process.sleep 0 |> Task.perform (always RemoveTemporaryViewOffset)
+                ]
 
         Blur id ->
             Browser.Dom.blur id |> Task.attempt (always NoOpFrontendMsg)
 
+        GetWindowSize msg ->
+            Browser.Dom.getViewport
+                |> Task.map
+                    (\{ viewport } ->
+                        ( Pixels.pixels <| round viewport.width, Pixels.pixels <| round viewport.height )
+                    )
+                |> Task.perform msg
+
 
 init : Url.Url -> Key -> ( FrontendModel, FrontendEffect )
 init url key =
-    case Url.Parser.parse urlDecoder url of
+    (case Url.Parser.parse urlDecoder url of
         Just (QnaSessionRoute qnaSessionId) ->
             qnaSessionRouteInit False key qnaSessionId
 
@@ -127,6 +154,8 @@ init url key =
 
         Nothing ->
             homepageRouteInit False key
+    )
+        |> Tuple.mapSecond (\effects -> Batch_ [ effects, GetWindowSize GotWindowSize ])
 
 
 qnaSessionRouteInit : Bool -> Key -> CryptographicKey QnaSessionId -> ( FrontendModel, FrontendEffect )
@@ -136,6 +165,8 @@ qnaSessionRouteInit gotFirstConnectMsg key qnaSessionId =
       , currentTime = Nothing
       , lastConnectionCheck = Nothing
       , gotFirstConnectMsg = gotFirstConnectMsg
+      , addedRowLastFrame = False
+      , windowSize = ( Pixels.pixels 1920, Pixels.pixels 1080 )
       }
     , SendToBackend (GetQnaSession qnaSessionId)
     )
@@ -148,17 +179,22 @@ hostInviteRouteInit gotFirstConnectMsg key hostSecret =
       , currentTime = Nothing
       , lastConnectionCheck = Nothing
       , gotFirstConnectMsg = gotFirstConnectMsg
+      , addedRowLastFrame = False
+      , windowSize = ( Pixels.pixels 1920, Pixels.pixels 1080 )
       }
     , SendToBackend (GetQnaSessionWithHostInvite hostSecret)
     )
 
 
+homepageRouteInit : Bool -> Key -> ( FrontendModel, FrontendEffect )
 homepageRouteInit gotFirstConnectMsg key =
     ( { key = key
       , remoteData = Homepage
       , currentTime = Nothing
       , lastConnectionCheck = Nothing
       , gotFirstConnectMsg = gotFirstConnectMsg
+      , addedRowLastFrame = False
+      , windowSize = ( Pixels.pixels 1920, Pixels.pixels 1080 )
       }
     , Batch_ []
     )
@@ -186,7 +222,7 @@ urlEncoder (CryptographicKey qnaSessionId) =
 
 update : FrontendMsg -> FrontendModel -> ( FrontendModel, FrontendEffect )
 update msg model =
-    case msg of
+    (case msg of
         UrlClicked urlRequest ->
             case urlRequest of
                 Internal url ->
@@ -261,7 +297,6 @@ update msg model =
                             , Batch_
                                 [ SendToBackend
                                     (LocalMsgRequest inQnaSession.qnaSessionId inQnaSession.localChangeCounter localMsg)
-                                , ScrollToBottom questionsViewId
                                 , Blur questionInputId
                                 ]
                             )
@@ -312,6 +347,17 @@ update msg model =
         CheckIfConnected _ ->
             ( model, SendToBackend CheckIfConnectedRequest )
 
+        RemoveTemporaryViewOffset ->
+            ( { model | addedRowLastFrame = False }, Batch_ [] )
+
+        WindowResized windowSize ->
+            ( { model | windowSize = windowSize }, Batch_ [] )
+
+        GotWindowSize windowSize ->
+            ( { model | windowSize = windowSize }, Batch_ [] )
+    )
+        |> checkRow model
+
 
 hostSecretToUrl : CryptographicKey HostSecret -> String
 hostSecretToUrl hostSecret =
@@ -340,11 +386,6 @@ addLocalChange localMsg inQnaSession =
       }
     , SendToBackend (LocalMsgRequest inQnaSession.qnaSessionId inQnaSession.localChangeCounter localMsg)
     )
-
-
-questionsViewId : String
-questionsViewId =
-    "questions-view-id"
 
 
 questionInputId : String
@@ -402,6 +443,27 @@ updateInQnaSession updateFunc model =
             ( model, Batch_ [] )
 
 
+checkRow : FrontendModel -> ( FrontendModel, FrontendEffect ) -> ( FrontendModel, FrontendEffect )
+checkRow before ( after, effects ) =
+    case ( before.remoteData, after.remoteData ) of
+        ( InQnaSession beforeQna, InQnaSession afterQna ) ->
+            let
+                beforeModel =
+                    Network.localState qnaSessionUpdate beforeQna.networkModel
+
+                afterModel =
+                    Network.localState qnaSessionUpdate afterQna.networkModel
+            in
+            if Moment.currentRow beforeModel /= Moment.currentRow afterModel then
+                ( { after | addedRowLastFrame = True }, ScrollEffect )
+
+            else
+                ( after, effects )
+
+        _ ->
+            ( after, effects )
+
+
 deleteQuestion : MomentId -> MomentSession -> MomentSession
 deleteQuestion questionId qnaSession =
     { qnaSession | questions = Dict.remove questionId qnaSession.questions }
@@ -451,7 +513,7 @@ qnaSessionUpdate msg qnaSession =
 
 updateFromBackend : ToFrontend -> FrontendModel -> ( FrontendModel, FrontendEffect )
 updateFromBackend msg model =
-    case msg of
+    (case msg of
         ServerMsgResponse qnaSessionId serverQnaMsg ->
             updateInQnaSession
                 (\inQnaSession ->
@@ -579,6 +641,31 @@ updateFromBackend msg model =
 
             else
                 ( { model | gotFirstConnectMsg = True }, Batch_ [] )
+    )
+        |> checkRow model
+
+
+css =
+    """
+
+@keyframes beat {
+    0% {
+        transform: translateY(-1000px);
+    }
+    80% {
+        transform: translateY(0px);
+    }
+    90% {
+        transform: translateY(-10px);
+    }
+    100% {
+        transform: translateY(0);
+    }
+}
+
+}
+
+"""
 
 
 view : FrontendModel -> { title : String, body : List (Html FrontendMsg) }
@@ -586,7 +673,29 @@ view model =
     { title = "Q&A"
     , body =
         [ Element.layout
-            [ Element.inFront (notConnectedView model) ]
+            [ Element.inFront (notConnectedView model)
+            , Html.node "style" [] [ Html.text css ]
+                |> Element.html
+                |> Element.behindContent
+            , case model.remoteData of
+                InQnaSession inQnaSession ->
+                    let
+                        qnaSession : MomentSession
+                        qnaSession =
+                            Network.localState qnaSessionUpdate inQnaSession.networkModel
+                    in
+                    (case inQnaSession.isHost of
+                        Just _ ->
+                            hostView inQnaSession.copiedHostUrl qnaSession
+
+                        Nothing ->
+                            questionInputView inQnaSession
+                    )
+                        |> Element.inFront
+
+                _ ->
+                    Element.inFront Element.none
+            ]
             (case model.remoteData of
                 Homepage ->
                     Element.column
@@ -625,27 +734,20 @@ view model =
                     Element.column
                         [ Element.spacing 16
                         , Element.width <| Element.maximum 800 Element.fill
-                        , Element.centerX
-                        , Element.paddingXY 16 16
+                        , Element.width Element.fill
                         , Element.height Element.fill
-                        ]
-                        [ Element.column
-                            [ Element.width Element.fill, Element.height Element.fill, Element.spacing 6 ]
-                            [ Element.text "Questions"
-                            , questionsView
-                                inQnaSession.qnaSessionId
-                                inQnaSession.copiedUrl
-                                model.currentTime
-                                (inQnaSession.isHost /= Nothing)
-                                qnaSession.userId
-                                qnaSession.questions
-                            ]
-                        , case inQnaSession.isHost of
-                            Just _ ->
-                                hostView inQnaSession.copiedHostUrl qnaSession
+                        , if model.addedRowLastFrame then
+                            Element.moveUp <| toFloat <| Pixels.inPixels Moment.momentHeight
 
-                            Nothing ->
-                                questionInputView inQnaSession
+                          else
+                            Element.moveUp 0
+                        ]
+                        [ questionsView
+                            inQnaSession.qnaSessionId
+                            inQnaSession.copiedUrl
+                            model.currentTime
+                            model.windowSize
+                            qnaSession
                         ]
             )
         ]
@@ -727,7 +829,12 @@ maxQuestionChars =
 questionInputView : InQnaSession_ -> Element FrontendMsg
 questionInputView inQnaSession =
     Element.column
-        [ Element.width Element.fill, Element.spacing 16 ]
+        [ Element.width <| Element.maximum 800 Element.fill
+        , Element.spacing 16
+        , Element.centerX
+        , Element.alignBottom
+        , Element.padding 16
+        ]
         [ Element.el
             [ Element.inFront <|
                 Element.el
@@ -822,17 +929,86 @@ questionsView :
     CryptographicKey QnaSessionId
     -> Maybe Time.Posix
     -> Maybe Time.Posix
-    -> Bool
-    -> UserId
-    -> Dict MomentId Moment
+    -> ( Quantity Int Pixels, Quantity Int Pixels )
+    -> MomentSession
     -> Element FrontendMsg
-questionsView qnaSessionId maybeCopiedUrl currentTime isHost userId questions =
+questionsView qnaSessionId maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
+    let
+        yOffset =
+            Quantity.plus topPadding towerHeight
+
+        towerHeight =
+            Quantity.multiplyBy (Moment.currentRow momentSession) Moment.momentHeight
+                |> Quantity.max (windowHeight |> Quantity.minus topPadding |> Quantity.minus bottomPadding)
+
+        topPadding =
+            Pixels.pixels 400
+
+        bottomPadding =
+            Pixels.pixels 260
+
+        height =
+            Quantity.plus yOffset bottomPadding
+
+        background =
+            Element.el
+                [ Element.width Element.fill
+                , Element.height <| pixelLength bottomPadding
+                , Element.Background.color <| Element.rgb 0.8 0.6 0.2
+                , Element.alignBottom
+                ]
+                Element.none
+    in
     Element.el
-        (List.map
-            (\question -> questionView currentTime isHost userId question |> Element.inFront)
-            (Dict.values questions)
-        )
+        [ Element.width Element.fill
+        , Element.height (pixelLength height)
+        , Element.Background.color (Element.rgb 0.95 0.95 1)
+        , Element.behindContent background
+        , Element.inFront
+            (Element.el
+                (Element.centerX
+                    :: Element.width (Element.px (Moment.maxColumn * 100))
+                    :: List.map
+                        (\question -> questionView yOffset currentTime question |> Element.inFront)
+                        (Dict.values momentSession.questions |> List.reverse)
+                )
+                Element.none
+            )
+        ]
         Element.none
+
+
+questionView : Quantity Int Pixels -> Maybe Time.Posix -> Moment -> Element FrontendMsg
+questionView offsetY currentTime question =
+    Element.el
+        [ Element.moveRight <| toFloat <| Moment.momentColumn question * 100
+        , Quantity.multiplyBy (Moment.momentRow question + 1) (Quantity.negate Moment.momentHeight)
+            |> Quantity.plus offsetY
+            |> Pixels.inPixels
+            |> toFloat
+            |> Element.moveDown
+        , Element.width <| Element.px (Moment.momentWidth question * 100)
+        , Element.height <| pixelLength Moment.momentHeight
+        , Element.Font.center
+        , Element.Font.size <| Moment.fontSize question
+        , Element.padding 2
+        ]
+        (Element.el
+            [ Element.width Element.fill
+            , Element.height Element.fill
+            , Element.Background.color <| Element.rgb 0.8 0.8 0.8
+            , Element.paddingXY 4 0
+            , Element.htmlAttribute <| Html.Attributes.style "animation-name" "beat"
+            , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
+            , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1s"
+            ]
+            (Element.paragraph
+                [ Element.centerY ]
+                [ NonemptyString.toString (Moment.momentContent question)
+                    |> Element.text
+                ]
+            )
+        )
 
 
 emptyContainer : CryptographicKey QnaSessionId -> Bool -> Maybe Time.Posix -> List (Element FrontendMsg)
@@ -911,35 +1087,6 @@ animatedEl =
 pixelLength : Quantity Int Pixels -> Element.Length
 pixelLength =
     Pixels.inPixels >> Element.px
-
-
-questionView : Maybe Time.Posix -> Bool -> UserId -> Moment -> Element FrontendMsg
-questionView currentTime isHost userId question =
-    Element.el
-        [ Element.moveRight <| toFloat <| Moment.momentColumn question * 100
-        , Quantity.multiplyBy (Moment.momentRow question) Moment.height
-            |> Pixels.inPixels
-            |> toFloat
-            |> Element.moveDown
-        , Element.width <| Element.px (Moment.width question * 100)
-        , Element.height <| pixelLength Moment.height
-        , Element.Font.center
-        , Element.Font.size <| Moment.fontSize question
-        , Element.paddingXY 4 4
-        ]
-        (Element.el
-            [ Element.width Element.fill
-            , Element.height Element.fill
-            , Element.Background.color <| Element.rgb 0.8 0.8 0.8
-            , Element.paddingXY 4 0
-            ]
-            (Element.paragraph
-                [ Element.centerY ]
-                [ NonemptyString.toString (Moment.momentContent question)
-                    |> Element.text
-                ]
-            )
-        )
 
 
 buttonStyle : List (Element.Attr () msg)
