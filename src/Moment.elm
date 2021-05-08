@@ -156,7 +156,7 @@ fontSize moment =
 
 contentWidth : NonemptyString -> number
 contentWidth content =
-    if String.Nonempty.length content > 20 then
+    if String.Nonempty.length content > 50 then
         3
 
     else if String.Nonempty.length content > 10 then
