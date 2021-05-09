@@ -22,6 +22,7 @@ import Element.Border
 import Element.Font
 import Element.Input
 import Element.Keyed
+import Element.Lazy
 import File.Download
 import Html exposing (Html)
 import Html.Attributes
@@ -31,7 +32,7 @@ import Id exposing (CryptographicKey(..), HostSecret, QnaSessionId, UserId(..))
 import Json.Decode
 import Lamdera
 import Moment exposing (Moment, MomentId, MomentSession)
-import Network exposing (Change(..))
+import Network exposing (Change(..), NetworkModel)
 import Pixels exposing (Pixels)
 import Process
 import Quantity exposing (Quantity)
@@ -663,7 +664,16 @@ css =
   user-select: none;
 }
 
-@keyframes y-offset-adjust {
+@keyframes y-offset-adjust-even {
+    0% {
+        transform: translateY(-100px);
+    }
+    100% {
+        transform: translateY(0);
+    }
+}
+
+@keyframes y-offset-adjust-odd {
     0% {
         transform: translateY(-100px);
     }
@@ -738,25 +748,13 @@ view model =
                         [ Element.text "Sorry, this Q&A session doesn't exist." ]
 
                 InQnaSession inQnaSession ->
-                    let
-                        qnaSession : MomentSession
-                        qnaSession =
-                            Network.localState qnaSessionUpdate inQnaSession.networkModel
-                    in
-                    Element.Keyed.column
+                    Element.column
                         [ Element.spacing 16
                         , Element.width <| Element.maximum 800 Element.fill
                         , Element.width Element.fill
                         , Element.height Element.fill
                         ]
-                        [ ( String.fromInt (Moment.currentRow qnaSession)
-                          , questionsView
-                                inQnaSession.copiedUrl
-                                (Maybe.withDefault (Time.millisToPosix 0) model.currentTime)
-                                model.windowSize
-                                qnaSession
-                          )
-                        ]
+                        [ Element.Lazy.lazy2 questionsView model.windowSize inQnaSession.networkModel ]
             )
         ]
     }
@@ -947,13 +945,14 @@ bottomPadding =
 
 
 questionsView :
-    Maybe Time.Posix
-    -> Time.Posix
-    -> ( Quantity Int Pixels, Quantity Int Pixels )
-    -> MomentSession
+    ( Quantity Int Pixels, Quantity Int Pixels )
+    -> NetworkModel LocalQnaMsg ConfirmLocalQnaMsg ServerQnaMsg MomentSession
     -> Element FrontendMsg
-questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
+questionsView ( _, windowHeight ) networkModel =
     let
+        momentSession =
+            Network.localState qnaSessionUpdate networkModel
+
         currentRow_ =
             Moment.currentRow momentSession
 
@@ -1011,8 +1010,11 @@ questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
         , if towerTallerThanWindowHeight then
             Element.htmlAttribute (Html.Attributes.style "animation-name" "")
 
+          else if modBy 2 currentRow_ == 0 then
+            Element.htmlAttribute (Html.Attributes.style "animation-name" "y-offset-adjust-even")
+
           else
-            Element.htmlAttribute (Html.Attributes.style "animation-name" "y-offset-adjust")
+            Element.htmlAttribute (Html.Attributes.style "animation-name" "y-offset-adjust-odd")
         , Element.htmlAttribute (Html.Attributes.style "animation-timing-function" "linear")
         , Element.htmlAttribute (Html.Attributes.style "animation-duration" "1s")
         , Element.behindContent ground
@@ -1052,7 +1054,7 @@ questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
                 (Element.centerX
                     :: Element.width (Element.px (Moment.maxColumn * 100))
                     :: List.map
-                        (\moment -> questionView (yOffset currentRow_) currentTime moment |> Element.inFront)
+                        (\moment -> questionView (yOffset currentRow_) moment |> Element.inFront)
                         (Dict.values momentSession.questions |> List.reverse)
                 )
                 Element.none
@@ -1061,8 +1063,8 @@ questionsView maybeCopiedUrl currentTime ( _, windowHeight ) momentSession =
         Element.none
 
 
-questionView : Quantity Int Pixels -> Time.Posix -> Moment -> Element FrontendMsg
-questionView offsetY currentTime moment =
+questionView : Quantity Int Pixels -> Moment -> Element FrontendMsg
+questionView offsetY moment =
     Element.el
         [ Element.moveRight <| toFloat <| Moment.momentColumn moment * 100
         , Quantity.multiplyBy (Moment.momentRow moment + 1) (Quantity.negate Moment.momentHeight)
@@ -1070,31 +1072,21 @@ questionView offsetY currentTime moment =
             |> Pixels.inPixels
             |> toFloat
             |> Element.moveDown
-        , Element.width <| Element.px (Moment.momentWidth moment * 100)
-        , Element.height <| pixelLength Moment.momentHeight
-        , Element.Font.center
-        , Element.Font.size <| Moment.fontSize moment
         ]
         (Element.el
-            (Element.width Element.fill
-                :: Element.height Element.fill
-                :: Element.Background.color (Element.rgb 0.8 0.8 0.8)
-                :: Element.paddingXY 4 0
-                :: Element.Border.width 2
-                :: Element.Border.color (Element.rgb 0.5 0.5 0.5)
-                :: (if
-                        Duration.from (Moment.momentCreationTime moment) currentTime
-                            |> Quantity.lessThan Duration.second
-                    then
-                        [ Element.htmlAttribute <| Html.Attributes.style "animation-name" "block-fall"
-                        , Element.htmlAttribute <| Html.Attributes.style "animation-timing-function" "linear"
-                        , Element.htmlAttribute <| Html.Attributes.style "animation-duration" "1s"
-                        ]
-
-                    else
-                        []
-                   )
-            )
+            [ Element.width <| Element.px (Moment.momentWidth moment * 100)
+            , Element.height <| pixelLength Moment.momentHeight
+            , Element.Background.color (Element.rgb 0.8 0.8 0.8)
+            , Element.paddingXY 4 0
+            , Element.Border.width 2
+            , Element.Border.rounded 4
+            , Element.Border.color (Element.rgb 0.5 0.5 0.5)
+            , Element.htmlAttribute (Html.Attributes.style "animation-name" "block-fall")
+            , Element.htmlAttribute (Html.Attributes.style "animation-timing-function" "linear")
+            , Element.htmlAttribute (Html.Attributes.style "animation-duration" "1s")
+            , Element.Font.center
+            , Element.Font.size <| Moment.fontSize moment
+            ]
             (Element.paragraph
                 [ Element.centerY ]
                 [ NonemptyString.toString (Moment.momentContent moment) |> Element.text ]
