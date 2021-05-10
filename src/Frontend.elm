@@ -118,19 +118,6 @@ effectToCmd effect =
         CopyToClipboard text ->
             supermario_copy_to_clipboard_to_js text
 
-        ScrollEffect ->
-            Cmd.batch
-                [--Browser.Dom.getViewport
-                 --    |> Task.andThen
-                 --        (\{ viewport } ->
-                 --            Browser.Dom.setViewport
-                 --                viewport.x
-                 --                (viewport.y + toFloat (Pixels.inPixels Moment.momentHeight))
-                 --        )
-                 --    |> Task.perform (always NoOpFrontendMsg)
-                 --, Process.sleep 0 |> Task.perform (always RemoveTemporaryViewOffset)
-                ]
-
         Blur id ->
             Browser.Dom.blur id |> Task.attempt (always NoOpFrontendMsg)
 
@@ -367,7 +354,7 @@ hostSecretToUrl hostSecret =
 
 domain : String
 domain =
-    "moment-of-the-month.lamdera.app"
+    "moment-of-the-month.app"
 
 
 hostInvite : String
@@ -392,19 +379,6 @@ addLocalChange localMsg inQnaSession =
 questionInputId : String
 questionInputId =
     "question-input-id"
-
-
-scrollToOf : Int -> String -> Float -> Task Browser.Dom.Error ()
-scrollToOf millis id y =
-    Task.map2
-        (\{ viewport } startTime ->
-            Task.andThen
-                (step (Browser.Dom.setViewportOf id) millis viewport.y y startTime)
-                Time.now
-        )
-        (Browser.Dom.getViewportOf id)
-        Time.now
-        |> Task.andThen identity
 
 
 step : (number -> Float -> Task x a) -> Int -> Float -> Float -> Time.Posix -> Time.Posix -> Task x a
@@ -687,75 +661,82 @@ css =
 
 view : FrontendModel -> { title : String, body : List (Html FrontendMsg) }
 view model =
+    let
+        networkModel =
+            case model.remoteData of
+                InQnaSession inQnaSession ->
+                    inQnaSession.networkModel
+
+                _ ->
+                    Network.init
+                        { questions = Dict.empty
+                        , name = NonemptyString ' ' ""
+                        , userId = UserId 0
+                        }
+    in
     { title = "Moment of the Month"
     , body =
         [ Element.layout
-            (Element.inFront (notConnectedView model)
-                :: Element.htmlAttribute (Html.Attributes.style "scrollbar" "visible")
-                :: (Html.node "style" [] [ Html.text css ]
-                        |> Element.html
-                        |> Element.behindContent
-                   )
-                :: (case model.remoteData of
+            [ Element.inFront (notConnectedView model)
+            , Html.node "style" [] [ Html.text css ] |> Element.html |> Element.behindContent
+            , Element.Background.color (Element.rgb 0.95 0.95 1)
+            , Element.inFront <|
+                Element.el [ Element.width Element.fill, Element.height Element.fill, Element.paddingXY 4 0 ]
+                    (case model.remoteData of
                         InQnaSession inQnaSession ->
-                            let
-                                qnaSession : MomentSession
-                                qnaSession =
-                                    Network.localState qnaSessionUpdate inQnaSession.networkModel
-                            in
-                            [ (case inQnaSession.isHost of
+                            case inQnaSession.isHost of
                                 Just _ ->
-                                    hostView inQnaSession.copiedHostUrl qnaSession
+                                    hostView inQnaSession.copiedUrl inQnaSession.qnaSessionId
 
                                 Nothing ->
                                     questionInputView inQnaSession
-                              )
-                                |> Element.inFront
-                            , Element.Background.color (Element.rgb 0.95 0.95 1)
-                            ]
 
-                        _ ->
-                            []
-                   )
-            )
-            (case model.remoteData of
-                Homepage ->
-                    Element.column
-                        [ Element.centerX, Element.centerY, Element.spacing 16, Element.paddingXY 16 0 ]
-                        [ Element.paragraph
-                            [ Element.centerX ]
-                            [ Element.text "To join a Q&A session, please use the link your host has provided." ]
-                        , Element.el [ Element.Font.size 24, Element.centerX ] (Element.text "OR")
-                        , Element.Input.button
-                            (Element.centerX :: buttonStyle)
-                            { onPress = Just PressedCreateQnaSession
-                            , label = Element.paragraph [] [ Element.text "Create a new Q&A session" ]
-                            }
-                        ]
+                        Homepage ->
+                            Element.column
+                                (Element.centerY
+                                    :: Element.spacing 16
+                                    :: Element.paddingXY 16 0
+                                    :: Element.width (Element.maximum 800 Element.shrink)
+                                    :: inputBackground
+                                )
+                                [ Element.paragraph
+                                    [ Element.centerX, Element.Font.color (Element.rgb 1 1 1) ]
+                                    [ Element.text "To join a session, please use the link your host has provided." ]
+                                , Element.el
+                                    [ Element.Font.size 24
+                                    , Element.centerX
+                                    , Element.Font.color <| Element.rgb 1 1 1
+                                    ]
+                                    (Element.text "OR")
+                                , Element.Input.button
+                                    (Element.centerX :: buttonStyle)
+                                    { onPress = Just PressedCreateQnaSession
+                                    , label = Element.paragraph [] [ Element.text "Create a new session" ]
+                                    }
+                                ]
 
-                LoadingQnaSessionWithHostInvite _ ->
-                    Element.el [ Element.centerX, Element.centerY ] (Element.text "Loading...")
+                        LoadingQnaSession _ ->
+                            Element.el
+                                (Element.centerY :: Element.Font.color (Element.rgb 1 1 1) :: Element.Font.center :: inputBackground)
+                                (Element.text "Loading...")
 
-                LoadingQnaSession _ ->
-                    Element.el [ Element.centerX, Element.centerY ] (Element.text "Loading...")
+                        LoadingQnaSessionWithHostInvite _ ->
+                            Element.el
+                                (Element.centerY :: Element.Font.color (Element.rgb 1 1 1) :: Element.Font.center :: inputBackground)
+                                (Element.text "Loading...")
 
-                CreatingQnaSession _ ->
-                    Element.el [ Element.centerX, Element.centerY ] (Element.text "Creating...")
+                        CreatingQnaSession _ ->
+                            Element.el
+                                (Element.centerY :: Element.Font.color (Element.rgb 1 1 1) :: Element.Font.center :: inputBackground)
+                                (Element.text "Creating...")
 
-                LoadingQnaSessionFailed () ->
-                    Element.paragraph
-                        [ Element.Font.center, Element.centerY, Element.padding 8 ]
-                        [ Element.text "Sorry, this Q&A session doesn't exist." ]
-
-                InQnaSession inQnaSession ->
-                    Element.column
-                        [ Element.spacing 16
-                        , Element.width <| Element.maximum 800 Element.fill
-                        , Element.width Element.fill
-                        , Element.height Element.fill
-                        ]
-                        [ Element.Lazy.lazy2 questionsView model.windowSize inQnaSession.networkModel ]
-            )
+                        LoadingQnaSessionFailed () ->
+                            Element.el
+                                (Element.centerY :: Element.Font.color (Element.rgb 1 1 1) :: Element.Font.center :: inputBackground)
+                                (Element.text "Sorry, this session doesn't exist.")
+                    )
+            ]
+            (Element.Lazy.lazy2 questionsView model.windowSize networkModel)
         ]
     }
 
@@ -783,11 +764,52 @@ notConnectedView model =
             Element.none
 
 
-hostView : Maybe Time.Posix -> MomentSession -> Element FrontendMsg
-hostView copiedHostUrl qnaSession =
+hostView : Maybe Time.Posix -> CryptographicKey QnaSessionId -> Element FrontendMsg
+hostView maybeCopiedUrl sessionId =
     Element.column
-        [ Element.width Element.fill, Element.spacing 12 ]
-        [ copyHostUrlButton copiedHostUrl
+        (Element.width (Element.maximum 580 Element.fill)
+            :: Element.spacing 12
+            :: Element.centerY
+            :: Element.Font.color (Element.rgb 1 1 1)
+            :: inputBackground
+        )
+        [ Element.el [ Element.centerX, Element.Font.size 36 ] (Element.text "You are the host!")
+        , Element.column
+            [ Element.width Element.fill, Element.spacing 8 ]
+            [ Element.paragraph
+                [ Element.Font.center, Element.Font.size 20 ]
+                [ Element.text "Copy the link so people can join" ]
+            , Element.Input.button
+                [ Element.centerX
+                , Element.Font.size 20
+                , Element.onRight <|
+                    case maybeCopiedUrl of
+                        Just copiedUrl ->
+                            Element.Keyed.el
+                                []
+                                ( Time.posixToMillis copiedUrl |> String.fromInt
+                                , animatedEl
+                                    (Animation.steps
+                                        { options = [], startAt = [ Property.opacity 0 ] }
+                                        [ Animation.step 100 [ Property.opacity 1 ]
+                                        , Animation.step 1000 [ Property.opacity 1 ]
+                                        , Animation.step 3000 [ Property.opacity 0 ]
+                                        ]
+                                    )
+                                    [ Element.paddingEach { left = 4, right = 0, top = 0, bottom = 0 } ]
+                                    (Element.text "Copied!")
+                                )
+
+                        Nothing ->
+                            Element.none
+                ]
+                { onPress = Just PressedCopyUrl
+                , label =
+                    Element.row
+                        [ Element.spacing 2 ]
+                        [ Element.text (domain ++ urlEncoder sessionId), Element.text "📋" ]
+                }
+            ]
         ]
 
 
@@ -832,18 +854,24 @@ maxQuestionChars =
     200
 
 
+inputBackground : List (Element.Attribute msg)
+inputBackground =
+    [ Element.paddingEach { left = 16, right = 16, top = 20, bottom = 16 }
+    , Element.Background.color <| Element.rgba 0 0 0 0.7
+    , Element.Border.rounded 8
+    , Element.centerX
+    ]
+
+
 questionInputView : InQnaSession_ -> Element FrontendMsg
 questionInputView inQnaSession =
     Element.column
-        [ Element.width <| Element.maximum 800 Element.fill
-        , Element.spacing 16
-        , Element.centerX
-        , Element.alignBottom
-        , Element.moveUp 16
-        , Element.paddingEach { left = 16, right = 16, top = 20, bottom = 16 }
-        , Element.Background.color <| Element.rgba 0 0 0 0.6
-        , Element.Border.rounded 8
-        ]
+        (Element.spacing 16
+            :: Element.alignBottom
+            :: Element.moveUp 16
+            :: Element.width (Element.maximum 800 Element.fill)
+            :: inputBackground
+        )
         [ Element.el
             [ Element.inFront <|
                 Element.el
@@ -892,7 +920,7 @@ questionInputView inQnaSession =
                 , label =
                     Element.Input.labelAbove
                         [ Element.Font.color <| Element.rgb 1 1 1 ]
-                        (Element.paragraph [] [ Element.text "What was your favorite moment this month?" ])
+                        (Element.paragraph [] [ Element.text "What was your favorite moment this\u{00A0}month?" ])
                 , text = inQnaSession.question
                 }
             )
@@ -1092,55 +1120,6 @@ questionView offsetY moment =
                 [ NonemptyString.toString (Moment.momentContent moment) |> Element.text ]
             )
         )
-
-
-emptyContainer : CryptographicKey QnaSessionId -> Bool -> Maybe Time.Posix -> List (Element FrontendMsg)
-emptyContainer qnaSessionId isHost maybeCopiedUrl =
-    if isHost then
-        [ Element.el [ Element.centerX, Element.Font.size 36 ] (Element.text "You are the host!")
-        , Element.column
-            [ Element.width Element.fill, Element.spacing 8 ]
-            [ Element.paragraph
-                [ Element.Font.center, Element.Font.size 20 ]
-                [ Element.text "Copy the link below so people can ask you questions:" ]
-            , Element.Input.button
-                [ Element.centerX
-                , Element.Font.size 20
-                , Element.onRight <|
-                    case maybeCopiedUrl of
-                        Just copiedUrl ->
-                            Element.Keyed.el
-                                []
-                                ( Time.posixToMillis copiedUrl |> String.fromInt
-                                , animatedEl
-                                    (Animation.steps
-                                        { options = [], startAt = [ Property.opacity 0 ] }
-                                        [ Animation.step 100 [ Property.opacity 1 ]
-                                        , Animation.step 1000 [ Property.opacity 1 ]
-                                        , Animation.step 3000 [ Property.opacity 0 ]
-                                        ]
-                                    )
-                                    [ Element.paddingEach { left = 4, right = 0, top = 0, bottom = 0 } ]
-                                    (Element.text "Copied!")
-                                )
-
-                        Nothing ->
-                            Element.none
-                ]
-                { onPress = Just PressedCopyUrl
-                , label =
-                    Element.row
-                        [ Element.spacing 2 ]
-                        [ Element.text (domain ++ urlEncoder qnaSessionId), Element.text "📋" ]
-                }
-            ]
-        ]
-
-    else
-        [ Element.paragraph
-            [ Element.Font.color <| Element.rgb 0.6 0.6 0.6, Element.Font.size 30, Element.Font.center ]
-            [ Element.text "No questions yet. You\u{00A0}can be the first to write one!" ]
-        ]
 
 
 animatedUi : (List (Element.Attribute msg) -> children -> Element msg) -> Animation -> List (Element.Attribute msg) -> children -> Element msg

@@ -159,7 +159,6 @@ type FrontendEffect
     | LoadUrl String
     | FileDownload String String String
     | CopyToClipboard String
-    | ScrollEffect
     | Blur String
     | GetWindowSize (( Quantity Int Pixels, Quantity Int Pixels ) -> FrontendMsg)
 
