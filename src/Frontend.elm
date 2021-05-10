@@ -662,6 +662,7 @@ css =
 view : FrontendModel -> { title : String, body : List (Html FrontendMsg) }
 view model =
     let
+        networkModel : NetworkModel LocalQnaMsg ConfirmLocalQnaMsg ServerQnaMsg MomentSession
         networkModel =
             case model.remoteData of
                 InQnaSession inQnaSession ->
@@ -686,7 +687,11 @@ view model =
                         InQnaSession inQnaSession ->
                             case inQnaSession.isHost of
                                 Just _ ->
-                                    hostView inQnaSession.copiedUrl inQnaSession.qnaSessionId
+                                    if Dict.isEmpty (Network.localState qnaSessionUpdate networkModel).questions then
+                                        hostView inQnaSession.copiedUrl inQnaSession.qnaSessionId
+
+                                    else
+                                        Element.none
 
                                 Nothing ->
                                     questionInputView inQnaSession
