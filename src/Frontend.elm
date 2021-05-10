@@ -959,7 +959,7 @@ valiatedQuestion text =
 
 errorColor : Element.Color
 errorColor =
-    Element.rgb 0.8 0.2 0.2
+    Element.rgb 1 0.5 0.5
 
 
 topPadding : Quantity Int Pixels
