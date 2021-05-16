@@ -659,6 +659,11 @@ css =
 """
 
 
+isMobile : ( Quantity Int Pixels, Quantity Int Pixels ) -> Bool
+isMobile ( width, _ ) =
+    width |> Quantity.lessThan (Pixels.pixels 600)
+
+
 view : FrontendModel -> { title : String, body : List (Html FrontendMsg) }
 view model =
     let
@@ -873,7 +878,7 @@ questionInputView inQnaSession =
     Element.column
         (Element.spacing 16
             :: Element.alignBottom
-            :: Element.moveUp 16
+            :: Element.moveUp 8
             :: Element.width (Element.maximum 800 Element.fill)
             :: inputBackground
         )
@@ -981,8 +986,11 @@ questionsView :
     ( Quantity Int Pixels, Quantity Int Pixels )
     -> NetworkModel LocalQnaMsg ConfirmLocalQnaMsg ServerQnaMsg MomentSession
     -> Element FrontendMsg
-questionsView ( _, windowHeight ) networkModel =
+questionsView ( windowWidth, windowHeight ) networkModel =
     let
+        isMobile_ =
+            isMobile ( windowWidth, windowHeight )
+
         momentSession =
             Network.localState qnaSessionUpdate networkModel
 
@@ -998,7 +1006,7 @@ questionsView ( _, windowHeight ) networkModel =
 
         towerHeight : Int -> Quantity Int Pixels
         towerHeight currentRow =
-            Quantity.multiplyBy currentRow Moment.momentHeight
+            Quantity.multiplyBy currentRow (Moment.momentHeight isMobile_)
                 |> Quantity.max
                     (windowHeight
                         |> Quantity.minus topPadding
@@ -1007,7 +1015,7 @@ questionsView ( _, windowHeight ) networkModel =
                     )
 
         towerTallerThanWindowHeight =
-            Quantity.multiplyBy currentRow_ Moment.momentHeight
+            Quantity.multiplyBy currentRow_ (Moment.momentHeight isMobile_)
                 |> Quantity.lessThan
                     (windowHeight
                         |> Quantity.minus topPadding
@@ -1023,8 +1031,8 @@ questionsView ( _, windowHeight ) networkModel =
         ground =
             Element.el
                 [ Element.width Element.fill
-                , Element.height <| pixelLength (Quantity.plus bottomPadding Moment.momentHeight)
-                , Element.moveDown <| toFloat <| Pixels.inPixels Moment.momentHeight
+                , Element.height <| pixelLength (Quantity.plus bottomPadding (Moment.momentHeight isMobile_))
+                , Element.moveDown <| toFloat <| Pixels.inPixels (Moment.momentHeight isMobile_)
                 , Element.Background.gradient
                     { angle = pi
                     , steps =
@@ -1064,7 +1072,7 @@ questionsView ( _, windowHeight ) networkModel =
         , Element.inFront
             (Element.el
                 [ yOffset_
-                    |> Quantity.minus (Quantity.multiplyBy currentRow_ Moment.momentHeight)
+                    |> Quantity.minus (Quantity.multiplyBy currentRow_ (Moment.momentHeight isMobile_))
                     |> Pixels.inPixels
                     |> toFloat
                     |> (+) -10
@@ -1085,9 +1093,9 @@ questionsView ( _, windowHeight ) networkModel =
         , Element.inFront
             (Element.el
                 (Element.centerX
-                    :: Element.width (Element.px (Moment.maxColumn * 100))
+                    :: Element.width (Element.px (Moment.maxColumn * blockWidth isMobile_))
                     :: List.map
-                        (\moment -> questionView (yOffset currentRow_) moment |> Element.inFront)
+                        (\moment -> questionView isMobile_ (yOffset currentRow_) moment |> Element.inFront)
                         (Dict.values momentSession.questions |> List.reverse)
                 )
                 Element.none
@@ -1096,29 +1104,50 @@ questionsView ( _, windowHeight ) networkModel =
         Element.none
 
 
-questionView : Quantity Int Pixels -> Moment -> Element FrontendMsg
-questionView offsetY moment =
+blockWidth : Bool -> number
+blockWidth isMobile_ =
+    if isMobile_ then
+        60
+
+    else
+        100
+
+
+questionView : Bool -> Quantity Int Pixels -> Moment -> Element FrontendMsg
+questionView isMobile_ offsetY moment =
     Element.el
-        [ Element.moveRight <| toFloat <| Moment.momentColumn moment * 100
-        , Quantity.multiplyBy (Moment.momentRow moment + 1) (Quantity.negate Moment.momentHeight)
+        [ Element.moveRight <| toFloat <| Moment.momentColumn moment * blockWidth isMobile_
+        , Quantity.multiplyBy (Moment.momentRow moment + 1) (Quantity.negate (Moment.momentHeight isMobile_))
             |> Quantity.plus offsetY
             |> Pixels.inPixels
             |> toFloat
             |> Element.moveDown
         ]
         (Element.el
-            [ Element.width <| Element.px (Moment.momentWidth moment * 100)
-            , Element.height <| pixelLength Moment.momentHeight
+            [ Element.width <| Element.px (Moment.momentWidth moment * blockWidth isMobile_)
+            , Element.height <| pixelLength (Moment.momentHeight isMobile_)
             , Element.Background.color (Element.rgb 0.8 0.8 0.8)
-            , Element.paddingXY 4 0
-            , Element.Border.width 2
-            , Element.Border.rounded 4
+            , if isMobile_ then
+                Element.paddingXY 4 0
+
+              else
+                Element.paddingXY 1 0
+            , if isMobile_ then
+                Element.Border.width 1
+
+              else
+                Element.Border.width 2
+            , if isMobile_ then
+                Element.Border.rounded 2
+
+              else
+                Element.Border.rounded 4
             , Element.Border.color (Element.rgb 0.5 0.5 0.5)
             , Element.htmlAttribute (Html.Attributes.style "animation-name" "block-fall")
             , Element.htmlAttribute (Html.Attributes.style "animation-timing-function" "linear")
             , Element.htmlAttribute (Html.Attributes.style "animation-duration" "1s")
             , Element.Font.center
-            , Element.Font.size <| Moment.fontSize moment
+            , Element.Font.size <| Moment.fontSize isMobile_ moment
             ]
             (Element.paragraph
                 [ Element.centerY ]

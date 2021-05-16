@@ -135,20 +135,42 @@ momentCreationTime (Moment moment) =
     moment.creationTime
 
 
-fontSize : Moment -> Int
-fontSize moment =
+fontSize : Bool -> Moment -> Int
+fontSize isMobile moment =
     let
         contentLength =
             momentContent moment |> String.Nonempty.length
     in
-    if contentLength > 150 then
-        14
+    if contentLength > 180 then
+        if isMobile then
+            10
+
+        else
+            12
+
+    else if contentLength > 150 then
+        if isMobile then
+            12
+
+        else
+            14
 
     else if contentLength > 100 then
-        16
+        if isMobile then
+            14
+
+        else
+            16
 
     else if contentLength > 12 then
-        20
+        if isMobile then
+            14
+
+        else
+            20
+
+    else if isMobile then
+        18
 
     else
         24
@@ -166,9 +188,13 @@ contentWidth content =
         1
 
 
-momentHeight : Quantity Int Pixels
-momentHeight =
-    Pixels.pixels 100
+momentHeight : Bool -> Quantity Int Pixels
+momentHeight isMobile =
+    if isMobile then
+        Pixels.pixels 120
+
+    else
+        Pixels.pixels 100
 
 
 type MomentId
