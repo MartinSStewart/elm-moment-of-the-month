@@ -12,6 +12,7 @@ module Moment exposing
     , initBackend
     , isCreator
     , maxColumn
+    , momentColor
     , momentColumn
     , momentContent
     , momentCreationTime
@@ -22,10 +23,12 @@ module Moment exposing
 
 import AssocList as Dict exposing (Dict)
 import AssocSet as Set exposing (Set)
+import Element
 import Id exposing (ClientId, CryptographicKey, HostSecret, SessionId, UserId(..))
 import List.Extra as List
 import Pixels exposing (Pixels)
 import Quantity exposing (Quantity)
+import Random
 import String.Nonempty exposing (NonemptyString)
 import Time
 
@@ -108,6 +111,24 @@ type Moment
         , column : Int
         , row : Int
         }
+
+
+randomGrayColor =
+    Random.uniform
+        0.73
+        [ 0.79
+        , 0.81
+        , 0.85
+        ]
+        |> Random.map (\a -> Element.rgb a a a)
+
+
+momentColor : Moment -> Element.Color
+momentColor moment =
+    (momentRow moment * 17 + momentColumn moment * 5)
+        |> Random.initialSeed
+        |> Random.step randomGrayColor
+        |> Tuple.first
 
 
 momentRow : Moment -> Int

@@ -1137,7 +1137,7 @@ questionView isMobile_ offsetY moment =
         (Element.el
             [ Element.width <| Element.px (width * blockWidth isMobile_)
             , Element.height <| pixelLength (Moment.momentHeight isMobile_)
-            , Element.Background.color (Element.rgb 0.8 0.8 0.8)
+            , Element.Background.color (Moment.momentColor moment)
             , if isMobile_ then
                 Element.paddingXY 4 0
 
