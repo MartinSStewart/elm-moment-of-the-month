@@ -30,6 +30,18 @@ tree yOffset =
         )
 
 
+butterflies : Quantity Int Pixels -> Element msg
+butterflies yOffset =
+    Element.el
+        [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 50), Element.moveLeft 80, Element.alignRight ]
+        (Element.image
+            [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+            , Element.scale 3
+            ]
+            { src = "./butterflies.gif", description = "" }
+        )
+
+
 flowers : Quantity Int Pixels -> Element msg
 flowers yOffset =
     Element.el
@@ -51,6 +63,18 @@ flowers2 yOffset =
             , Element.scale 3
             ]
             { src = "./flowers.png", description = "" }
+        )
+
+
+mountain : Quantity Int Pixels -> Element msg
+mountain yOffset =
+    Element.el
+        [ Element.moveDown <| toFloat (Pixels.inPixels yOffset - 100), Element.alignRight, Element.alpha 0.5 ]
+        (Element.image
+            [ Element.htmlAttribute <| Html.Attributes.class "pixel-art"
+            , Element.scale 3
+            ]
+            { src = "./mountains.png", description = "" }
         )
 
 
@@ -157,4 +181,4 @@ sun =
         , Element.moveDown 32
         , Element.moveLeft 32
         ]
-        { src = "./sun.png", description = "" }
+        { src = "./sun.gif", description = "" }

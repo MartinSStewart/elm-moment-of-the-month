@@ -1058,11 +1058,13 @@ questionsView ( windowWidth, windowHeight ) networkModel =
             Element.htmlAttribute (Html.Attributes.style "animation-name" "y-offset-adjust-odd")
         , Element.htmlAttribute (Html.Attributes.style "animation-timing-function" "linear")
         , Element.htmlAttribute (Html.Attributes.style "animation-duration" "1s")
+        , Element.behindContent (Doodads.mountain yOffset_)
         , Element.behindContent ground
         , Element.behindContent (Doodads.grass yOffset_)
         , Element.behindContent (Doodads.tree yOffset_)
         , Element.behindContent (Doodads.treasure yOffset_)
         , Element.behindContent (Doodads.skeleton yOffset_)
+        , Element.behindContent (Doodads.butterflies yOffset_)
         , Element.behindContent (Doodads.flowers yOffset_)
         , Element.behindContent (Doodads.flowers2 yOffset_)
         , Element.behindContent Doodads.sun
