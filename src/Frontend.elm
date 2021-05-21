@@ -1115,8 +1115,19 @@ blockWidth isMobile_ =
 
 questionView : Bool -> Quantity Int Pixels -> Moment -> Element FrontendMsg
 questionView isMobile_ offsetY moment =
+    let
+        width =
+            Moment.momentWidth moment
+
+        rightOffset =
+            if Moment.momentRow moment |> modBy 2 |> (==) 0 then
+                Moment.maxColumn - (Moment.momentColumn moment + width)
+
+            else
+                Moment.momentColumn moment
+    in
     Element.el
-        [ Element.moveRight <| toFloat <| Moment.momentColumn moment * blockWidth isMobile_
+        [ Element.moveRight <| toFloat <| rightOffset * blockWidth isMobile_
         , Quantity.multiplyBy (Moment.momentRow moment + 1) (Quantity.negate (Moment.momentHeight isMobile_))
             |> Quantity.plus offsetY
             |> Pixels.inPixels
@@ -1124,7 +1135,7 @@ questionView isMobile_ offsetY moment =
             |> Element.moveDown
         ]
         (Element.el
-            [ Element.width <| Element.px (Moment.momentWidth moment * blockWidth isMobile_)
+            [ Element.width <| Element.px (width * blockWidth isMobile_)
             , Element.height <| pixelLength (Moment.momentHeight isMobile_)
             , Element.Background.color (Element.rgb 0.8 0.8 0.8)
             , if isMobile_ then
